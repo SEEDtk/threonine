@@ -98,20 +98,26 @@ public class ProdFormatProcessor extends BaseProcessor {
             // Locate the important input columns.
             int sampleCol = reader.findField("sample");
             int prodCol = reader.findField("thr_production");
-            int growth = reader.findField("growth");
+            int growthCol = reader.findField("growth");
+            int badCol = reader.findField("bad");
             // Start the report.
             writer.initialize(this.choiceFile);
             log.info("Reading input file.");
             int count = 0;
+            int badCount = 0;
             // Loop through the input.
             for (TabbedLineReader.Line line : reader) {
-                String sampleId = line.get(sampleCol);
-                double production = line.getDouble(prodCol);
-                double density = line.getDouble(growth);
-                writer.writeSample(sampleId, production, density);
-                count++;
+                if (line.getFlag(badCol))
+                    badCount++;
+                else {
+                    String sampleId = line.get(sampleCol);
+                    double production = line.getDouble(prodCol);
+                    double density = line.getDouble(growthCol);
+                    writer.writeSample(sampleId, production, density);
+                    count++;
+                }
             }
-            log.info("{} samples written.", count);
+            log.info("{} samples written, {} bad samples skipped.", count, badCount);
         }
     }
 
