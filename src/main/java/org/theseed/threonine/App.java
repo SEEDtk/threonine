@@ -9,6 +9,7 @@ import org.theseed.utils.BaseProcessor;
  *
  * thrfix		reconcile threonine growth files
  * prod			format production data
+ * thrall		generate a prediction input file for all possible samples
  *
  */
 public class App
@@ -26,6 +27,9 @@ public class App
             break;
         case "prod" :
             processor = new ProdFormatProcessor();
+            break;
+        case "thrall" :
+            processor = new ThrallProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);

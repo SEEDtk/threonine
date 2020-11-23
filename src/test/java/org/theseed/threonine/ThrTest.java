@@ -6,9 +6,12 @@ package org.theseed.threonine;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.theseed.test.Matchers.*;
 
+import java.io.File;
+import java.io.IOException;
 import static org.hamcrest.Matchers.*;
 
 import org.junit.Test;
+import org.theseed.io.TabbedLineReader;
 
 /**
  * @author Bruce Parrello
@@ -46,6 +49,21 @@ public class ThrTest {
         samp2 = new SampleId("7_0_0_A_asdO_000_D000_0_12_M1");
         assertThat(samp2.getDeletes().size(), equalTo(0));
         assertThat(samp2.isIPTG(), isFalse());
+    }
+
+    @Test
+    public void testSamplePattern() throws IOException {
+        File testFile = new File("data", "idMap.tbl");
+        try (TabbedLineReader testStream = new TabbedLineReader(testFile)) {
+            for (TabbedLineReader.Line line : testStream) {
+                String strain = line.get(1);
+                boolean iptg = line.getFlag(3);
+                double time = line.getDouble(4);
+                String medium = line.get(5);
+                SampleId sample = SampleId.translate(strain, time, iptg, medium);
+                assertThat(strain, sample.toString(), equalTo(line.get(2)));
+            }
+        }
     }
 
 }
