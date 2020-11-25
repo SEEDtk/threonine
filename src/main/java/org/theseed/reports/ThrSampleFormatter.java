@@ -30,13 +30,13 @@ public class ThrSampleFormatter {
     /** logging facility */
     protected static Logger log = LoggerFactory.getLogger(ThrProductionFormatter.class);
     /** list of choice arrays for parsing */
-    protected List<String[]> choices;
+    private List<String[]> choices;
     /** list of choice arrays for iterating */
-    protected List<String[]> iChoices;
+    private List<String[]> iChoices;
     /** permissible delete values */
-    protected String[] deleteChoices;
+    private String[] deleteChoices;
     /** number of output columns for the sample description */
-    protected int numCols;
+    private int numCols;
     /** choices for IPTG flag */
     private static final String[] IPTG_CHOICES = new String[] { "0", "I" };
     /** choices for time point */
@@ -275,6 +275,20 @@ public class ThrSampleFormatter {
             return retVal.toString();
         }
 
+    }
+
+    /**
+     * @return the possible deletions
+     */
+    protected String[] getDeleteChoices() {
+        return this.deleteChoices;
+    }
+
+    /**
+     * @return the possible insertions
+     */
+    protected String[] getInsertChoices() {
+        return this.choices.get(SampleId.INSERT_COL);
     }
 
 }

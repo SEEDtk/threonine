@@ -26,7 +26,7 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
      * Enum for the different output types
      */
     public static enum Type {
-        CSV, TABLE;
+        CSV, TABLE, MASTER;
 
         public ThrProductionFormatter create(File outFile) throws FileNotFoundException {
             ThrProductionFormatter retVal = null;
@@ -36,6 +36,9 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
                 break;
             case TABLE :
                 retVal = new TextThrProductionFormatter(outFile, "\t");
+                break;
+            case MASTER :
+                retVal = new MasterThrProductionFormatter(outFile);
                 break;
             }
             return retVal;

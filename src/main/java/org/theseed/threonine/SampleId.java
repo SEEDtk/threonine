@@ -34,17 +34,17 @@ public class SampleId implements Comparable<SampleId> {
     /** number of fragments in the strain ID */
     public static final int STRAIN_SIZE = 7;
     /** array index of pseudo-numeric component */
-    private static final int TIME_COL = 8;
+    public static final int TIME_COL = 8;
     /** array index of the medium ID */
-    private static final int MEDIA_COL = 9;
+    public static final int MEDIA_COL = 9;
     /** number of guaranteed fields */
     private static final int NORMAL_SIZE = 10;
     /** index of the insertion column */
-    private static final int INSERT_COL = 5;
+    public static final int INSERT_COL = 5;
     /** index of the deletion column */
     public static final int DELETE_COL = 6;
     /** index of the induction column */
-    private static final int INDUCE_COL = 7;
+    public static final int INDUCE_COL = 7;
     /** map of sample fragments for each plasmid code */
     private static final Map<String, String[]> PLASMID_MAP = Stream.of(
             new AbstractMap.SimpleEntry<>("pfb6.4.2", StringUtils.split("D_TasdA1_P_asdD", '_')),
