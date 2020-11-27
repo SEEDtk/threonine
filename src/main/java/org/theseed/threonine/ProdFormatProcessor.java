@@ -24,6 +24,7 @@ import org.theseed.utils.BaseProcessor;
  * 	sample			sample ID
  * 	thr_production	threonine production
  * 	growth			optical density
+ *  bad				"Y" for a row with bad data, else empty
  *
  * There is also a required "choices.tbl" file that describes the labels for each of the fields in the strain name.
  * The records in this file correspond to the fields in the strain ID.  The last record represents the deleted genes,

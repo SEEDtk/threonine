@@ -21,8 +21,8 @@ import org.theseed.utils.BaseProcessor;
 
 /**
  * This program reads the choices.tbl file produced by the "thrfix" command and produces
- * a machine learning prediction file for all the possible combinations.  There are
- * roughly 1.6 million.
+ * a machine learning prediction file for all the possible combinations.  Currently, only
+ * time-point = 24 is output.
  *
  * The positional parameters are the name of the choices file and the name of the output file.
  *

@@ -40,7 +40,7 @@ public class ThrSampleFormatter {
     /** choices for IPTG flag */
     private static final String[] IPTG_CHOICES = new String[] { "0", "I" };
     /** choices for time point */
-    private static final String[] TIME_POINTS = new String[] { "4p5", "6", "12", "24" };
+    private static final String[] TIME_POINTS = new String[] { "24" };
     /** choices for medium */
     private static final String[] MEDIA = new String[] { "M1" };
 
@@ -218,8 +218,10 @@ public class ThrSampleFormatter {
             i++;
             // Media
             this.limits[i] = MEDIA.length;
-            // Denote we're not done.
+            // Get the first possible sample.
             this.done = false;
+            if (! checkValidity())
+                this.done = ! findNext();
         }
 
         @Override
@@ -238,7 +240,7 @@ public class ThrSampleFormatter {
             int i = 0;
             while (i < ThrSampleFormatter.this.choices.size()) {
                 retVal.appendSeparator('_');
-                retVal.append(ThrSampleFormatter.this.iChoices.get(i)[this.positions[i]]);
+                retVal.append(computeFragment(i));
                 i++;
             }
             // Now we do the deletes.
@@ -258,21 +260,77 @@ public class ThrSampleFormatter {
             retVal.append(MEDIA[this.positions[i]]);
             i++;
             // Now increment to the next sample.
-            i = 0;
-            boolean found = false;
-            while (! found && i < this.positions.length) {
-                this.positions[i]++;
-                if (this.positions[i] < this.limits[i])
-                    found = true;
-                else {
-                    this.positions[i] = 0;
-                    i++;
-                }
-            }
+            boolean found = findNext();
             // If there is no next sample, insure hasNext() fails.
             if (! found) done = true;
             // Return the sample ID.
             return retVal.toString();
+        }
+
+        /**
+         * @return the ID fragment at the specified position
+         *
+         * @param i		position of interest
+         */
+        private String computeFragment(int i) {
+            return ThrSampleFormatter.this.iChoices.get(i)[this.positions[i]];
+        }
+
+        /**
+         * Find the next valid sample.
+         *
+         * @return TRUE if one was found, else FALSE
+         */
+        private boolean findNext() {
+            boolean valid = false;
+            boolean found = tryNext();
+            while (found && ! valid) {
+                valid = checkValidity();
+                if (! valid)
+                    found = tryNext();
+            }
+            return found;
+        }
+
+        /**
+         * @return TRUE if this is a valid combination, else FALSE
+         *
+         * NOTE that this is not at all robust.
+         */
+        private boolean checkValidity() {
+            boolean retVal = true;
+            if (this.computeFragment(0).contentEquals("7") && this.computeFragment(3).contentEquals("0"))
+                retVal = false;
+            else if (this.computeFragment(2).startsWith("Tasd") && this.computeFragment(3).contentEquals("asdO"))
+                retVal = false;
+            else if (this.computeFragment(1).contentEquals("0") && ! this.computeFragment(2).contentEquals("0"))
+                retVal = false;
+            else if (this.computeFragment(0).contentEquals("M") && this.computeFragment(3).contentEquals("A"))
+                retVal = false;
+            else if (! this.computeFragment(2).contentEquals("0") && this.computeFragment(3).contentEquals("0"))
+                retVal = false;
+            if (this.computeFragment(1).contentEquals("D") && this.computeFragment(3).contentEquals("A"))
+                retVal = false;
+            if (this.computeFragment(1).contentEquals("D") && this.computeFragment(3).contentEquals("0"))
+                retVal = false;
+            return retVal;
+        }
+
+        /**
+         * Move to the next possible sample.
+         *
+         * @return TRUE if successful, FALSE if we are at the end of the stream.
+         */
+        private boolean tryNext() {
+            boolean found = false;
+            for (int i = 0; ! found && i < this.positions.length; i++) {
+                this.positions[i]++;
+                if (this.positions[i] < this.limits[i])
+                    found = true;
+                else
+                    this.positions[i] = 0;
+            }
+            return found;
         }
 
     }
