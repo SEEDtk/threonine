@@ -10,6 +10,7 @@ import org.theseed.utils.BaseProcessor;
  * thrfix		reconcile threonine growth files
  * prod			format production data
  * thrall		generate a prediction input file for all possible samples
+ * impact		determine the impact of each sample fragment in a set of predictions
  *
  */
 public class App
@@ -22,6 +23,9 @@ public class App
         BaseProcessor processor;
         // Determine the command to process.
         switch (command) {
+        case "impact" :
+            processor = new ImpactProcessor();
+            break;
         case "thrfix" :
             processor = new ThrFixProcessor();
             break;

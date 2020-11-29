@@ -38,7 +38,7 @@ public class SampleId implements Comparable<SampleId> {
     /** array index of the medium ID */
     public static final int MEDIA_COL = 9;
     /** number of guaranteed fields */
-    private static final int NORMAL_SIZE = 10;
+    public static final int NORMAL_SIZE = 10;
     /** index of the insertion column */
     public static final int INSERT_COL = 5;
     /** index of the deletion column */
@@ -229,6 +229,15 @@ public class SampleId implements Comparable<SampleId> {
     public String[] getStrainFragments() {
         String[] retVal = Arrays.copyOfRange(this.fragments, 0, STRAIN_SIZE);
         return retVal;
+    }
+
+    /**
+     * @return the fragment at the specified index
+     *
+     * @param idx	index of desired fragment
+     */
+    public String getFragment(int idx) {
+        return this.fragments[idx];
     }
 
     /**
