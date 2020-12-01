@@ -12,6 +12,7 @@ import static org.hamcrest.Matchers.*;
 
 import org.junit.Test;
 import org.theseed.io.TabbedLineReader;
+import org.theseed.proteins.SampleId;
 
 /**
  * @author Bruce Parrello

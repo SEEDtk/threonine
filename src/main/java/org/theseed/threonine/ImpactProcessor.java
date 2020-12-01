@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.io.LineReader;
 import org.theseed.io.TabbedLineReader;
+import org.theseed.proteins.SampleId;
 import org.theseed.utils.BaseProcessor;
 
 /**
@@ -193,5 +194,4 @@ public class ImpactProcessor extends BaseProcessor {
                 stats.getN());
     }
 
-    // TODO constructors and methods for ImpactProcessor
 }

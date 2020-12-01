@@ -13,7 +13,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
-import org.theseed.threonine.SampleId;
+import org.theseed.proteins.SampleId;
 
 /**
  * This produces an alternate form of the output designed for import into Excel.  The file is a tab-delimited
