@@ -40,7 +40,8 @@ import org.theseed.utils.ParseFailureException;
  * --input		input file (if not the standard input)
  * --choices	name of the choices file (default is "choices.tbl" in the current directory)
  * --format		format for the output
- * --24hour		if specified, only 24-hour samples will be output
+ * --minHours	minimum time point to include (default 0)
+ * --maxHours	maximum time point to include (default 24)
  * --min		minimum production; only production values strictly greater than this will be output; the default is -1
  * --max		maximum production; only production values strictly less than this will be output; the default is 5
  *
@@ -69,9 +70,13 @@ public class ProdFormatProcessor extends BaseProcessor {
     @Option(name = "--format", usage = "output format")
     private ThrProductionFormatter.Type format;
 
-    /** 24-hour-only flag */
-    @Option(name = "--24hour", usage = "if specified, only 24-hour samples will be output")
-    private boolean only24Hour;
+    /** minimum time point */
+    @Option(name = "--minHours", usage = "minimum time point")
+    private double minHours;
+
+    /** maximum time point */
+    @Option(name = "--maxHours", usage = "maximum time point")
+    private double maxHours;
 
     /** minimum acceptable production */
     @Option(name = "--min", usage = "minimum bound on the production value (exclusive)")
@@ -90,7 +95,8 @@ public class ProdFormatProcessor extends BaseProcessor {
         this.inFile = null;
         this.choiceFile = new File(System.getProperty("user.dir"), "choices.tbl");
         this.format = ThrProductionFormatter.Type.TABLE;
-        this.only24Hour = false;
+        this.minHours = 0.0;
+        this.maxHours = 24.0;
         this.minBound = -1.0;
         this.maxBound = 5.0;
     }
@@ -110,6 +116,8 @@ public class ProdFormatProcessor extends BaseProcessor {
             throw new FileNotFoundException("Choices file " + this.choiceFile + " is not found or unreadable.");
         if (this.minBound >= this.maxBound)
             throw new ParseFailureException("Minimum bound must be strictly less than maximum bound, since both are exclusive.");
+        if (this.minHours > this.maxHours)
+            throw new ParseFailureException("Minimum time point cannot be greater than maximum time point.");
         return true;
     }
 
@@ -136,16 +144,17 @@ public class ProdFormatProcessor extends BaseProcessor {
                     badCount++;
                 else {
                     String sampleId = line.get(sampleCol);
+                    SampleId sample = new SampleId(sampleId);
                     double production = line.getDouble(prodCol);
                     double density = line.getDouble(growthCol);
                     // Check for the bounds and the 24-hour filter.
                     if (production <= this.minBound || production >= this.maxBound)
                         boundCount++;
-                    else if (this.only24Hour && ! this.check24(sampleId))
+                    else if (! this.checkTime(sample))
                         timeCount++;
                     else {
                         // Here we have a good sample.
-                        writer.writeSample(sampleId, production, density);
+                        writer.writeSample(sample, production, density);
                         count++;
                     }
                 }
@@ -156,13 +165,12 @@ public class ProdFormatProcessor extends BaseProcessor {
     }
 
     /**
-     * @return TRUE if this is a 24-hour sample, else FALSE
+     * @return TRUE if sample is in range, else FALSE
      *
-     * @param sampleId	ID of the sample
+     * @param sample	ID of the sample
      */
-    private boolean check24(String sampleId) {
-        SampleId sample = new SampleId(sampleId);
-        return (sample.getTimePoint() == 24.0);
+    private boolean checkTime(SampleId sample) {
+        return (sample.getTimePoint() <= this.maxHours && sample.getTimePoint() >= this.minHours);
     }
 
 }

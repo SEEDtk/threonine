@@ -58,11 +58,10 @@ public class MasterThrProductionFormatter extends ThrProductionFormatter {
     }
 
     @Override
-    public void writeSample(String sampleId, double production, double density) {
+    public void writeSample(SampleId sample, double production, double density) {
         // Parse the sample ID and output the first 5 columns.
-        SampleId sample = new SampleId(sampleId);
         List<String> cols = new ArrayList<String>(this.outCols);
-        cols.add(sampleId);
+        cols.add(sample.toString());
         String[] fragments = sample.getBaseFragments();
         for (int i = 0; i < 5; i++)
             cols.add(fragments[i]);

@@ -10,6 +10,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 
+import org.theseed.proteins.SampleId;
+
 /**
  * This is the base class for all the threonine-production formatting methods.
  *
@@ -77,7 +79,7 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
     /**
      * Write a sample to the output.
      */
-    public abstract void writeSample(String sampleId, double production, double density);
+    public abstract void writeSample(SampleId sample, double production, double density);
 
     /**
      * Close this report.

@@ -144,7 +144,7 @@ public class ThrallProcessor extends BaseProcessor {
                 String insert = sample.getFragment(SampleId.INSERT_COL);
                 Set<String> deletes = sample.getDeletes().stream().map(x -> "D" + x).collect(Collectors.toSet());
                 if ((insert.contentEquals("000") || trainingHeaders.contains(insert)) && trainingHeaders.containsAll(deletes)) {
-                    double[] parms = this.formatter.parseSample(sampleId);
+                    double[] parms = this.formatter.parseSample(sample);
                     String parmString = IntStream.range(0, parms.length).filter(i -> this.keep[i]).mapToObj(i -> Double.toString(parms[i]))
                             .collect(Collectors.joining(this.delim));
                     writer.println(sampleId + this.delim + parmString);

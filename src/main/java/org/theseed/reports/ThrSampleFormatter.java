@@ -138,12 +138,11 @@ public class ThrSampleFormatter {
     /**
      * @return an array of numbers representing the structure of a sample
      *
-     * @param sampleId	ID of the sample in question
+     * @param sample	ID of the sample in question
      */
-    public double[] parseSample(String sampleId) {
+    public double[] parseSample(SampleId sample) {
         double[] retVal = new double[numCols];
         Arrays.fill(retVal, 0.0);
-        SampleId sample = new SampleId(sampleId);
         String[] parts = sample.getBaseFragments();
         // This will track the current output location.
         int outIdx = 0;

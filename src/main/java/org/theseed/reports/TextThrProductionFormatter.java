@@ -8,6 +8,7 @@ import java.io.FileNotFoundException;
 import java.io.PrintWriter;
 import org.apache.commons.text.TextStringBuilder;
 import org.theseed.io.Shuffler;
+import org.theseed.proteins.SampleId;
 
 /**
  * This produces a text version of the production table designed for machine learning.  It supports
@@ -89,8 +90,8 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
     }
 
     @Override
-    public void writeSample(String sampleId, double production, double density) {
-        double[] data = this.parseSample(sampleId);
+    public void writeSample(SampleId sample, double production, double density) {
+        double[] data = this.parseSample(sample);
         int n = data.length + 2;
         if (this.lastValue == null) {
             // First time through, so initialize the tracking system.
@@ -116,7 +117,7 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
         this.lastValue[n - 2] = production;
         this.lastValue[n - 1] = density;
         // Add this row to the output buffer.
-        this.buffer.add(new DataLine(sampleId, this.lastValue));
+        this.buffer.add(new DataLine(sample.toString(), this.lastValue));
     }
 
     @Override
