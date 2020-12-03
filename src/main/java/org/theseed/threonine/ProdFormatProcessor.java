@@ -14,8 +14,10 @@ import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.io.TabbedLineReader;
+import org.theseed.proteins.SampleId;
 import org.theseed.reports.ThrProductionFormatter;
 import org.theseed.utils.BaseProcessor;
+import org.theseed.utils.ParseFailureException;
 
 /**
  * This command formats the threonine production data.  The data comes in on the standard input, in tab-delimited
@@ -38,6 +40,9 @@ import org.theseed.utils.BaseProcessor;
  * --input		input file (if not the standard input)
  * --choices	name of the choices file (default is "choices.tbl" in the current directory)
  * --format		format for the output
+ * --24hour		if specified, only 24-hour samples will be output
+ * --min		minimum production; only production values strictly greater than this will be output; the default is -1
+ * --max		maximum production; only production values strictly less than this will be output; the default is 5
  *
  * @author Bruce Parrello
  *
@@ -64,6 +69,18 @@ public class ProdFormatProcessor extends BaseProcessor {
     @Option(name = "--format", usage = "output format")
     private ThrProductionFormatter.Type format;
 
+    /** 24-hour-only flag */
+    @Option(name = "--24hour", usage = "if specified, only 24-hour samples will be output")
+    private boolean only24Hour;
+
+    /** minimum acceptable production */
+    @Option(name = "--min", usage = "minimum bound on the production value (exclusive)")
+    private double minBound;
+
+    /** maximum acceptable production */
+    @Option(name = "--max", usage = "maximum bound on the production value (exclusive)")
+    private double maxBound;
+
     /** output file */
     @Argument(index = 0, metaVar = "outFile.csv", usage = "output file")
     private File outFile;
@@ -73,10 +90,13 @@ public class ProdFormatProcessor extends BaseProcessor {
         this.inFile = null;
         this.choiceFile = new File(System.getProperty("user.dir"), "choices.tbl");
         this.format = ThrProductionFormatter.Type.TABLE;
+        this.only24Hour = false;
+        this.minBound = -1.0;
+        this.maxBound = 5.0;
     }
 
     @Override
-    protected boolean validateParms() throws IOException {
+    protected boolean validateParms() throws IOException, ParseFailureException {
         if (this.inFile == null) {
             this.reader = System.in;
             log.info("Production data will be read from the standard input.");
@@ -88,6 +108,8 @@ public class ProdFormatProcessor extends BaseProcessor {
         }
         if (! this.choiceFile.canRead())
             throw new FileNotFoundException("Choices file " + this.choiceFile + " is not found or unreadable.");
+        if (this.minBound >= this.maxBound)
+            throw new ParseFailureException("Minimum bound must be strictly less than maximum bound, since both are exclusive.");
         return true;
     }
 
@@ -106,6 +128,8 @@ public class ProdFormatProcessor extends BaseProcessor {
             log.info("Reading input file.");
             int count = 0;
             int badCount = 0;
+            int boundCount = 0;
+            int timeCount = 0;
             // Loop through the input.
             for (TabbedLineReader.Line line : reader) {
                 if (line.getFlag(badCol))
@@ -114,12 +138,31 @@ public class ProdFormatProcessor extends BaseProcessor {
                     String sampleId = line.get(sampleCol);
                     double production = line.getDouble(prodCol);
                     double density = line.getDouble(growthCol);
-                    writer.writeSample(sampleId, production, density);
-                    count++;
+                    // Check for the bounds and the 24-hour filter.
+                    if (production <= this.minBound || production >= this.maxBound)
+                        boundCount++;
+                    else if (this.only24Hour && ! this.check24(sampleId))
+                        timeCount++;
+                    else {
+                        // Here we have a good sample.
+                        writer.writeSample(sampleId, production, density);
+                        count++;
+                    }
                 }
             }
-            log.info("{} samples written, {} bad samples skipped.", count, badCount);
+            log.info("{} samples written, {} bad samples skipped, {} outside the production bounds, {} were filtered by time point.",
+                    count, badCount, boundCount, timeCount);
         }
+    }
+
+    /**
+     * @return TRUE if this is a 24-hour sample, else FALSE
+     *
+     * @param sampleId	ID of the sample
+     */
+    private boolean check24(String sampleId) {
+        SampleId sample = new SampleId(sampleId);
+        return (sample.getTimePoint() == 24.0);
     }
 
 }
