@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import org.apache.commons.lang3.StringUtils;
+
 /**
  * This is a utility class that represents the threonine production and the growth density for a
  * threonine sample.  There may be multiple observations for a sample, in which case we take the mean.
@@ -23,6 +25,8 @@ public class GrowthData {
     private List<Double> production;
     /** optical densities */
     private List<Double> density;
+    /** experiment and well */
+    private List<String> origins;
     /** time point of measurements */
     private double timePoint;
 
@@ -36,6 +40,7 @@ public class GrowthData {
         this.oldStrain = oldStrainId;
         this.production = new ArrayList<Double>();
         this.density = new ArrayList<Double>();
+        this.origins = new ArrayList<String>();
         this.timePoint = time;
     }
 
@@ -44,10 +49,13 @@ public class GrowthData {
      *
      * @param prod	threonine production
      * @param dens	optical density
+     * @param exp	experiment ID
+     * @param well	well ID
      */
-    public void merge(double prod, double dens) {
+    public void merge(double prod, double dens, String exp, String well) {
         this.production.add(prod);
         this.density.add(dens);
+        this.origins.add(exp + ":" + well);
     }
 
     /**
@@ -99,6 +107,13 @@ public class GrowthData {
      */
     public double getDensity() {
         return goodMean(this.density);
+    }
+
+    /**
+     * @return the origin string
+     */
+    public String getOrigins() {
+        return StringUtils.join(this.origins, ", ");
     }
 
     /**

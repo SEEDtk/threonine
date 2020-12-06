@@ -30,7 +30,8 @@ import org.theseed.utils.BaseProcessor;
  * Each row of the new strain file is identified in the old file by a strain name, an IPTG flag, and a time
  * stamp.  These three information items can be translated into a unique sample ID.  All rows that map to the
  * same sample ID will be averaged together to determine the correct growth and production data.  There is a
- * "Supect" flag used to identify bad samples.  Finally, we compute the normalized production
+ * "Suspect" flag used to identify bad samples.  There are also the "experiment" and "Well" columns containing
+ * the original experiment ID and the well containing the sample.  Finally, we compute the normalized production
  * (raw / optical density) and the growth rate (production / time).
  *
  * The positional parameters are the name of the master file and the name of a file to contain the choices
@@ -104,6 +105,8 @@ public class ThrFixProcessor extends BaseProcessor {
             int prodCol = oldStream.findField("Thr");
             int densCol = oldStream.findField("Growth");
             int errCol = oldStream.findField("Suspect");
+            int expCol = oldStream.findField("experiment");
+            int wellCol = oldStream.findField("Well");
             for (TabbedLineReader.Line line : oldStream) {
                 // Verify that this line has numbers in the growth and production columns.
                 if (line.isEmpty(prodCol) || line.isEmpty(densCol))
@@ -158,7 +161,7 @@ public class ThrFixProcessor extends BaseProcessor {
                         }
                         // Store this row in the sample map.
                         GrowthData growth = targetMap.computeIfAbsent(sample, x -> new GrowthData(strain, time));
-                        growth.merge(prod, dens);
+                        growth.merge(prod, dens, line.get(expCol), line.get(wellCol));
                     }
                 }
             }
@@ -178,7 +181,7 @@ public class ThrFixProcessor extends BaseProcessor {
                 badNumRows, badSampleRows, keptRows);
         log.info("{} good rows had no production.", zeroProdRows);
         log.info("Producing output.");
-        System.out.println("num\told_strain\tsample\tthr_production\tgrowth\tbad\tthr_normalized\tthr_rate");
+        System.out.println("num\told_strain\tsample\tthr_production\tgrowth\tbad\tthr_normalized\tthr_rate\torigins");
         // Write the good data.
         int num = 0;
         for (Map.Entry<SampleId, GrowthData> sampleEntry : this.growthMap.entrySet()) {
@@ -210,9 +213,9 @@ public class ThrFixProcessor extends BaseProcessor {
      * @param badFlag	"Y" if bad, "" if good
      */
     private void writeSampleData(int num, SampleId sampleId, GrowthData growth, String badFlag) {
-        System.out.format("%d\t%s\t%s\t%1.9f\t%1.2f\t%s\t%1.9f\t%1.9f%n",
+        System.out.format("%d\t%s\t%s\t%1.9f\t%1.2f\t%s\t%1.9f\t%1.9f\t%s%n",
                 num, growth.getOldStrain(), sampleId.toString(), growth.getProduction(), growth.getDensity(),
-                badFlag, growth.getNormalizedProduction(), growth.getProductionRate());
+                badFlag, growth.getNormalizedProduction(), growth.getProductionRate(), growth.getOrigins());
     }
 
 }
