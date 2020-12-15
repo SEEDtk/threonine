@@ -106,7 +106,7 @@ public class ThrFixProcessor extends BaseProcessor {
             int densCol = oldStream.findField("Growth");
             int errCol = oldStream.findField("Suspect");
             int expCol = oldStream.findField("experiment");
-            int wellCol = oldStream.findField("Well");
+            int wellCol = oldStream.findField("Sample_y");
             for (TabbedLineReader.Line line : oldStream) {
                 // Verify that this line has numbers in the growth and production columns.
                 if (line.isEmpty(prodCol) || line.isEmpty(densCol))
