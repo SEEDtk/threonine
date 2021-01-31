@@ -33,7 +33,7 @@ import org.theseed.utils.ParseFailureException;
  * which get special treatment.  The possible field values are listed in comma-separated form.  Values of "0" or "000"
  * are treated as empty cases.
  *
- * The positional parameter is the name of the output file.
+ * The positional parameter is the name of the output directory.
  *
  * The command-line options are as follows.
  *

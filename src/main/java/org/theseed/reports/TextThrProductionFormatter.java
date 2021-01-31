@@ -65,10 +65,14 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
         }
     }
 
-
+    /**
+     * Default constructor for subclasses.
+     */
+    protected TextThrProductionFormatter() {
+    }
 
     /**
-     * Create an new production file formatter.
+     * Create a new production file formatter.
      *
      * @param outFile	output file
      * @param delim		field delimiter
@@ -76,7 +80,19 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
      * @throws FileNotFoundException
      */
     public TextThrProductionFormatter(File outFile, String delim) throws FileNotFoundException {
-        super(outFile);
+        setupDataFile(outFile, delim);
+    }
+
+    /**
+     * Initialize the output file for this formatter.
+     *
+     * @param outFile	output file
+     * @param delim		delimiter to use between fields (comma or tab)
+     *
+     * @throws FileNotFoundException
+     */
+    protected void setupDataFile(File outFile, String delim) throws FileNotFoundException {
+        this.setOutput(outFile);
         this.writer = new PrintWriter(outFile);
         this.delim = delim;
         this.buffer = new Shuffler<DataLine>(4000);
@@ -130,7 +146,9 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
                 this.stringBuffer.append(delim).append(titles[i]);
         }
         this.stringBuffer.append(delim).append("production").append(delim).append("density");
-        this.writer.println(this.stringBuffer.toString());
+        String header = this.stringBuffer.toString();
+        this.registerHeader(header);
+        this.writer.println(header);
         // Scramble the output.
         log.info("Shuffling data lines for output.");
         this.buffer.shuffle(this.buffer.size());
@@ -139,6 +157,14 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
         for (DataLine line : this.buffer)
             this.writer.println(line.toString());
         this.writer.close();
+    }
+
+    /**
+     * Make sure the subclass knows what the header looks like.
+     *
+     * @param header	proposed header line
+     */
+    protected void registerHeader(String header) {
     }
 
 }

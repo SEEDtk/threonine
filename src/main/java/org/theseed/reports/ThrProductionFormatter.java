@@ -28,9 +28,9 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
      * Enum for the different output types
      */
     public static enum Type {
-        CSV, TABLE, MASTER;
+        CSV, TABLE, DIR;
 
-        public ThrProductionFormatter create(File outFile) throws FileNotFoundException {
+        public ThrProductionFormatter create(File outFile) throws IOException {
             ThrProductionFormatter retVal = null;
             switch (this) {
             case CSV :
@@ -39,9 +39,8 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
             case TABLE :
                 retVal = new TextThrProductionFormatter(outFile, "\t");
                 break;
-            case MASTER :
-                retVal = new MasterThrProductionFormatter(outFile);
-                break;
+            case DIR :
+                retVal = new DirThrProductionFormatter(outFile);
             }
             return retVal;
         }
@@ -49,13 +48,13 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
     }
 
     /**
-     * Create the formatter for a specified output stream.
+     * Set up the formatter for a specified output stream.
      *
      * @param output	output stream
      *
      * @throws FileNotFoundException
      */
-    public ThrProductionFormatter(File outFile) throws FileNotFoundException {
+    protected void setOutput(File outFile) throws FileNotFoundException {
         this.outStream = new FileOutputStream(outFile);
     }
 
