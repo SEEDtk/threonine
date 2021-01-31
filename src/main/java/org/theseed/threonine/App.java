@@ -11,6 +11,7 @@ import org.theseed.utils.BaseProcessor;
  * prod			format production data
  * thrall		generate a prediction input file for all possible samples
  * impact		determine the impact of each sample fragment in a set of predictions
+ * thrBuild		process experiment results to produce the input for "thrfix"
  *
  */
 public class App
@@ -34,6 +35,9 @@ public class App
             break;
         case "thrall" :
             processor = new ThrallProcessor();
+            break;
+        case "thrBuild" :
+            processor = new ThrBuildProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);

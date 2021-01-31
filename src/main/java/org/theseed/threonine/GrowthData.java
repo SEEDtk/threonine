@@ -4,6 +4,7 @@
 package org.theseed.threonine;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -136,10 +137,33 @@ public class GrowthData {
     }
 
     /**
+     * @return a displayable list of production values
+     */
+    public String getProductionList() {
+        return IntStream.range(0, this.production.size()).mapToDouble(i -> this.production.get(i))
+                .mapToObj(f -> StringUtils.trim(String.format("%6.4f", f))).collect(Collectors.joining(","));
+    }
+
+    /**
      * @return the old strain ID
      */
     public String getOldStrain() {
         return this.oldStrain;
+    }
+
+    /**
+     * @return the range of production values
+     */
+    public double getProductionRange() {
+        Iterator<Double> iter = this.production.iterator();
+        double min = iter.next();
+        double max = min;
+        while (iter.hasNext()) {
+            double val = iter.next();
+            if (val > max) max = val;
+            if (val < min) min = val;
+        }
+        return (max - min);
     }
 
 }

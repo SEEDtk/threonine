@@ -26,7 +26,7 @@ import org.theseed.utils.ParseFailureException;
  * 	sample			sample ID
  * 	thr_production	threonine production
  * 	growth			optical density
- *  bad				"Y" for a row with bad data, else empty
+ *  bad				"Y" for a row with bad data, "?" for a row with questionable data, else empty
  *
  * There is also a required "choices.tbl" file that describes the labels for each of the fields in the strain name.
  * The records in this file correspond to the fields in the strain ID.  The last record represents the deleted genes,
@@ -44,6 +44,7 @@ import org.theseed.utils.ParseFailureException;
  * --maxHours	maximum time point to include (default 24)
  * --min		minimum production; only production values strictly greater than this will be output; the default is -1
  * --max		maximum production; only production values strictly less than this will be output; the default is 5
+ * --pure		skip questionable results
  *
  * @author Bruce Parrello
  *
@@ -86,6 +87,10 @@ public class ProdFormatProcessor extends BaseProcessor {
     @Option(name = "--max", usage = "maximum bound on the production value (exclusive)")
     private double maxBound;
 
+    /** if specified, questionable results will be skipped */
+    @Option(name = "--pure", usage = "suppress output of questionable results")
+    private boolean pureFlag;
+
     /** output file */
     @Argument(index = 0, metaVar = "outFile.csv", usage = "output file")
     private File outFile;
@@ -99,6 +104,7 @@ public class ProdFormatProcessor extends BaseProcessor {
         this.maxHours = 24.0;
         this.minBound = -1.0;
         this.maxBound = 5.0;
+        this.pureFlag = false;
     }
 
     @Override
@@ -136,12 +142,16 @@ public class ProdFormatProcessor extends BaseProcessor {
             log.info("Reading input file.");
             int count = 0;
             int badCount = 0;
+            int skipCount = 0;
             int boundCount = 0;
             int timeCount = 0;
             // Loop through the input.
             for (TabbedLineReader.Line line : reader) {
-                if (line.getFlag(badCol))
+                String badFlag = line.get(badCol);
+                if (badFlag.equals("Y"))
                     badCount++;
+                else if (this.pureFlag && badFlag.equals("?"))
+                    skipCount++;
                 else {
                     String sampleId = line.get(sampleCol);
                     SampleId sample = new SampleId(sampleId);
@@ -159,8 +169,8 @@ public class ProdFormatProcessor extends BaseProcessor {
                     }
                 }
             }
-            log.info("{} samples written, {} bad samples skipped, {} outside the production bounds, {} were filtered by time point.",
-                    count, badCount, boundCount, timeCount);
+            log.info("{} samples written, {} questionable samples skipped, {} bad samples skipped, {} outside the production bounds, {} were filtered by time point.",
+                    count, skipCount, badCount, boundCount, timeCount);
         }
     }
 
