@@ -350,11 +350,12 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
             Iterator<String[]> iter = reader.new SectionIter(null, ",");
             // Skip the header line.
             iter.next();
+            // Note the growth is scaled by 10.
             while (iter.hasNext()) {
                 String[] line = iter.next();
                 String well = line[0];
                 String rowChar = line[0].substring(0, 1);
-                double growth = Double.valueOf(line[2]);
+                double growth = Double.valueOf(line[2]) * 10.0;
                 if (well.endsWith("12")) {
                     // Here we have a row base, so we save it for normalization.
                     rowBase.put(rowChar, growth);

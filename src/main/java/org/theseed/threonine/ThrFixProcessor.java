@@ -8,9 +8,11 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -23,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.proteins.SampleId;
+import org.theseed.reports.MeanComputer;
 import org.theseed.utils.BaseProcessor;
 
 /**
@@ -43,9 +46,13 @@ import org.theseed.utils.BaseProcessor;
  * -h	display command-line usagee
  * -v	display more frequent log messages
  *
- * --good	only output good samples
- * --alert	specifies a range; production values with a higher spread in values than
- * 			the specified range are flagged as questionable (the default is 0.3)
+ * --mean		type of mean to use (MIDDLE, SIGMA2, SIGMA1, TRIMEAN)
+ * --good		only output good samples
+ * --alert		specifies a range; production values with a higher spread in values than
+ * 				the specified range are flagged as questionable (the default is 0.3)
+ * --trigger	specifies a threshold; if a time point is greater than all the other time
+ * 				points (two or more) by the threshold, then the production value is flagged
+ * 				as questionable
  *
  * @author Bruce Parrello
  *
@@ -72,6 +79,14 @@ public class ThrFixProcessor extends BaseProcessor {
     @Option(name = "--alert", metaVar = "0.1", usage = "maximum reliable production range")
     private double alertRange;
 
+    /** type of mean to use for multi-valued samples */
+    @Option(name = "--mean", usage = "algorithm for computing mean of multi-valued samples")
+    private MeanComputer.Type meanType;
+
+    /** trigger threshold */
+    @Option(name = "--trigger", usage = "threshold for detecting anomalous time points")
+    private double triggerThreshold;
+
     /** old strain data file */
     @Argument(index = 0, metaVar = "oldStrains.tbl", usage = "old strain information file", required = true)
     private File oldFile;
@@ -84,6 +99,8 @@ public class ThrFixProcessor extends BaseProcessor {
     protected void setDefaults() {
         this.goodFlag = false;
         this.alertRange = 0.3;
+        this.meanType = MeanComputer.Type.TRIMEAN;
+        this.triggerThreshold = 1.2;
     }
 
      @Override
@@ -91,6 +108,9 @@ public class ThrFixProcessor extends BaseProcessor {
         // Verify the input files.
         if (! this.oldFile.canRead())
             throw new FileNotFoundException("Old strain input file " + this.oldFile + " is not found or unreadable.");
+        // Store the mean type.
+        GrowthData.MEAN_COMPUTER = this.meanType.create();
+        log.info("Using {} to average multi-valued samples.", this.meanType);
         return true;
     }
 
@@ -200,6 +220,8 @@ public class ThrFixProcessor extends BaseProcessor {
         log.info("{} rows were missing growth or production numbers, {} input rows were suspect, and {} were good.",
                 badNumRows, badSampleRows, keptRows);
         log.info("{} good rows had no production.", zeroProdRows);
+        // Now we need to organize the samples by strain and look for threshold anomalies.
+        this.checkThresholds();
         log.info("Producing output.");
         System.out.println("num\told_strain\tsample\tthr_production\tgrowth\tbad\tthr_normalized\tthr_rate\torigins\traw_productions");
         // Write the good data.
@@ -211,7 +233,7 @@ public class ThrFixProcessor extends BaseProcessor {
             num++;
             double range = growth.getProductionRange();
             String qFlag = "";
-            if (range > this.alertRange) {
+            if (range > this.alertRange || growth.isSuspicious()) {
                 qFlag = "?";
                 qCount++;
             }
@@ -231,6 +253,34 @@ public class ThrFixProcessor extends BaseProcessor {
             }
             log.info("{} bad samples output.", num - oldNum);
         }
+    }
+
+    /**
+     * Sort the growth data by sample.  Look for threshold anomalies; that is, strains for which a single sample has a dramatically
+     * higher value at a particular time point.  We only look at good samples, and strains with three or more time points.
+     */
+    private void checkThresholds() {
+        Map<String, NavigableSet<GrowthData>> strainMap = new HashMap<String, NavigableSet<GrowthData>>(this.growthMap.size());
+        for (Map.Entry<SampleId, GrowthData> sampleEntry : this.growthMap.entrySet()) {
+            // Compute the strain/induction ID for this sample.
+            String strainId = sampleEntry.getKey().toTimeless();
+            // Get its growth list.
+            NavigableSet<GrowthData> growthList = strainMap.computeIfAbsent(strainId, k -> new TreeSet<GrowthData>());
+            growthList.add(sampleEntry.getValue());
+        }
+        // For each strain, the samples are sorted from highest production to lowest.  So, if we have at least three samples in
+        // the strain list and the gap between the first and second is higher than the threshold, we have a suspicious sample.
+        int count = 0;
+        for (NavigableSet<GrowthData> growthList : strainMap.values()) {
+            if (growthList.size() >= 3) {
+                GrowthData first = growthList.pollFirst();
+                if ((first.getProduction() - growthList.first().getProduction()) > this.triggerThreshold) {
+                    first.setSuspicious();
+                    count++;
+                }
+            }
+        }
+        log.info("{} samples failed the threshold test for threshold {}.", count, this.triggerThreshold);
     }
 
     /**

@@ -10,26 +10,34 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.apache.commons.lang3.StringUtils;
+import org.theseed.reports.MeanComputer;
 
 /**
  * This is a utility class that represents the threonine production and the growth density for a
  * threonine sample.  There may be multiple observations for a sample, in which case we take the mean.
+ * The objects sort by production (high to low), then time point (low to high), and finally old strain ID.
  *
  * @author Bruce Parrello
  */
-public class GrowthData {
+public class GrowthData implements Comparable<GrowthData> {
 
     // FIELDS
     /** old strain ID */
     private String oldStrain;
     /** threonine production amounts in grams/liter */
     private List<Double> production;
+    /** saved production value */
+    private double productionKey;
     /** optical densities */
     private List<Double> density;
     /** experiment and well */
     private List<String> origins;
     /** time point of measurements */
     private double timePoint;
+    /** TRUE if this sample is suspicious */
+    private boolean suspicious;
+    /** algorithm for computing the mean */
+    public static MeanComputer MEAN_COMPUTER = new MeanComputer.Sigma(2);
 
     /**
      * Create a blank growth-data object.
@@ -43,6 +51,8 @@ public class GrowthData {
         this.density = new ArrayList<Double>();
         this.origins = new ArrayList<String>();
         this.timePoint = time;
+        this.suspicious = false;
+        this.productionKey = Double.NaN;
     }
 
     /**
@@ -60,54 +70,21 @@ public class GrowthData {
     }
 
     /**
-     * Compute an error-corrected mean for a set of numbers.  The raw mean and standard deviation are computed.
-     * Values outside the four-sigma range are thrown out, and the error-corrected mean is computed from the
-     * result.
-     *
-     * @param nums		list of input numbers
-     *
-     * @return the bias-corrected mean
-     */
-    private static double goodMean(List<Double> nums) {
-        double retVal = 0.0;
-        if (nums.size() == 1)
-            retVal = nums.get(0);
-        else if (nums.size() > 1) {
-            double sum = 0.0;
-            double sqSum = 0.0;
-            for (double val : nums) {
-                sum += val;
-                sqSum += val * val;
-            }
-            double mean = sum / nums.size();
-            double stdv = Math.sqrt((sqSum - mean * mean) / nums.size());
-            double min = mean - 2.0 * stdv;
-            double max = mean + 2.0 * stdv;
-            // Now compute the mean for the values inside the 6-sigma range.
-            int count = 0;
-            for (double val : nums) {
-                if (val >= min && val <= max) {
-                    retVal += val;
-                    count++;
-                }
-            }
-            retVal /= (double) count;
-        }
-        return retVal;
-    }
-
-    /**
      * @return the production rate
+     *
+     * NOTE that since this is a sort field, we save the value the first time it is computed
      */
     public double getProduction() {
-        return goodMean(this.production);
+        if (Double.isNaN(this.productionKey))
+            this.productionKey = MEAN_COMPUTER.goodMean(this.production);
+        return this.productionKey;
     }
 
     /**
      * @return the optical density
      */
     public double getDensity() {
-        return goodMean(this.density);
+        return MEAN_COMPUTER.goodMean(this.density);
     }
 
     /**
@@ -124,7 +101,10 @@ public class GrowthData {
         List<Double> norms = IntStream.range(0, this.production.size())
                 .filter(i -> this.density.get(i) > 0).mapToObj(i -> this.production.get(i) / this.density.get(i))
                 .collect(Collectors.toList());
-        return goodMean(norms);
+        double retVal = 0.0;
+        if (norms.size() > 0)
+            retVal = MEAN_COMPUTER.goodMean(norms);
+        return retVal;
     }
 
     /**
@@ -133,7 +113,7 @@ public class GrowthData {
      * @param time	number of hours of growth
      */
     public double getProductionRate() {
-        return goodMean(this.production) / this.timePoint;
+        return MEAN_COMPUTER.goodMean(this.production) / this.timePoint;
     }
 
     /**
@@ -164,6 +144,64 @@ public class GrowthData {
             if (val < min) min = val;
         }
         return (max - min);
+    }
+
+    /**
+     * @return TRUE if this sample has been marked suspicious
+     */
+    public boolean isSuspicious() {
+        return this.suspicious;
+    }
+
+    /**
+     * Mark this sample as suspicious.
+     */
+    public void setSuspicious() {
+        this.suspicious = true;
+    }
+
+    @Override
+    public int compareTo(GrowthData o) {
+        int retVal = Double.compare(o.getProduction(), this.getProduction());
+        if (retVal == 0) {
+            retVal = Double.compare(this.timePoint, o.timePoint);
+            if (retVal == 0)
+                retVal = this.oldStrain.compareTo(o.oldStrain);
+        }
+        return retVal;
+    }
+
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + ((this.oldStrain == null) ? 0 : this.oldStrain.hashCode());
+        long temp;
+        temp = Double.doubleToLongBits(this.timePoint);
+        result = prime * result + (int) (temp ^ (temp >>> 32));
+        return result;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (!(obj instanceof GrowthData)) {
+            return false;
+        }
+        GrowthData other = (GrowthData) obj;
+        if (this.oldStrain == null) {
+            if (other.oldStrain != null) {
+                return false;
+            }
+        } else if (!this.oldStrain.equals(other.oldStrain)) {
+            return false;
+        }
+        if (Double.doubleToLongBits(this.timePoint) != Double.doubleToLongBits(other.timePoint)) {
+            return false;
+        }
+        return true;
     }
 
 }
