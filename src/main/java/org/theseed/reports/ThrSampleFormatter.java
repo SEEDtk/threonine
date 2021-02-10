@@ -306,11 +306,17 @@ public class ThrSampleFormatter {
                 retVal = false;
             else if (this.computeFragment(0).contentEquals("M") && this.computeFragment(3).contentEquals("A"))
                 retVal = false;
-            else if (! this.computeFragment(2).contentEquals("0") && this.computeFragment(3).contentEquals("0"))
+            else if (! this.computeFragment(2).contentEquals("0") && (this.computeFragment(3).contentEquals("0") ||
+                    this.computeFragment(3).contentEquals("A")))
                 retVal = false;
-            if (this.computeFragment(1).contentEquals("D") && this.computeFragment(3).contentEquals("A"))
+            if (this.computeFragment(1).contentEquals("D") && (this.computeFragment(3).contentEquals("0") ||
+                    this.computeFragment(3).contentEquals("A")))
                 retVal = false;
-            if (this.computeFragment(1).contentEquals("D") && this.computeFragment(3).contentEquals("0"))
+            if (this.computeFragment(2).contentEquals("0") && this.computeFragment(5).contentEquals("000") &&
+                    ! this.computeFragment(3).contentEquals("0"))
+                retVal = false;
+            if (! this.computeFragment(5).contentEquals("000") && (this.computeFragment(3).contentEquals("0") ||
+                    this.computeFragment(3).contentEquals("A")))
                 retVal = false;
             return retVal;
         }

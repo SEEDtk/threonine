@@ -45,6 +45,7 @@ import org.theseed.utils.ParseFailureException;
  * --min		minimum production; only production values strictly greater than this will be output; the default is -1
  * --max		maximum production; only production values strictly less than this will be output; the default is 5
  * --pure		skip questionable results
+ * --prod		name of production column to use; the default is "thr_production"
  *
  * @author Bruce Parrello
  *
@@ -91,6 +92,10 @@ public class ProdFormatProcessor extends BaseProcessor {
     @Option(name = "--pure", usage = "suppress output of questionable results")
     private boolean pureFlag;
 
+    /** name of column containing production value to use */
+    @Option(name = "--prod", metaVar = "thr_rate", usage = "name of threonine production column from input file")
+    private String prodName;
+
     /** output file */
     @Argument(index = 0, metaVar = "outFile.csv", usage = "output file")
     private File outFile;
@@ -105,6 +110,7 @@ public class ProdFormatProcessor extends BaseProcessor {
         this.minBound = -1.0;
         this.maxBound = 5.0;
         this.pureFlag = false;
+        this.prodName = "thr_production";
     }
 
     @Override
@@ -124,6 +130,7 @@ public class ProdFormatProcessor extends BaseProcessor {
             throw new ParseFailureException("Minimum bound must be strictly less than maximum bound, since both are exclusive.");
         if (this.minHours > this.maxHours)
             throw new ParseFailureException("Minimum time point cannot be greater than maximum time point.");
+        log.info("Threonine production column name is {}.", this.prodName);
         return true;
     }
 
@@ -134,7 +141,7 @@ public class ProdFormatProcessor extends BaseProcessor {
                 ThrProductionFormatter writer = this.format.create(this.outFile)) {
             // Locate the important input columns.
             int sampleCol = reader.findField("sample");
-            int prodCol = reader.findField("thr_production");
+            int prodCol = reader.findField(this.prodName);
             int growthCol = reader.findField("growth");
             int badCol = reader.findField("bad");
             // Start the report.
