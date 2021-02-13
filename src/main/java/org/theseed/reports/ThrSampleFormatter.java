@@ -313,7 +313,7 @@ public class ThrSampleFormatter {
                     this.computeFragment(3).contentEquals("A")))
                 retVal = false;
             if (this.computeFragment(2).contentEquals("0") && this.computeFragment(5).contentEquals("000") &&
-                    ! this.computeFragment(3).contentEquals("0"))
+                    (this.computeFragment(3).contentEquals("P") || this.computeFragment(3).contentEquals("C")))
                 retVal = false;
             if (! this.computeFragment(5).contentEquals("000") && (this.computeFragment(3).contentEquals("0") ||
                     this.computeFragment(3).contentEquals("A")))
