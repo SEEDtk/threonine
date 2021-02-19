@@ -28,7 +28,7 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
      * Enum for the different output types
      */
     public static enum Type {
-        CSV, TABLE, DIR;
+        CSV, TABLE, DIR, CLASS;
 
         public ThrProductionFormatter create(File outFile) throws IOException {
             ThrProductionFormatter retVal = null;
@@ -38,6 +38,9 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
                 break;
             case TABLE :
                 retVal = new TextThrProductionFormatter(outFile, "\t");
+                break;
+            case CLASS :
+                retVal = new ClassThrProductionFormatter(outFile);
                 break;
             case DIR :
                 retVal = new DirThrProductionFormatter(outFile);

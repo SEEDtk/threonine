@@ -5,7 +5,10 @@ package org.theseed.reports;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.PrintWriter;
+
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.theseed.io.Shuffler;
 import org.theseed.proteins.SampleId;
@@ -24,7 +27,7 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
     /** field delimiter */
     private String delim;
     /** output writer */
-    private PrintWriter writer;
+    protected PrintWriter writer;
     /** queue of output strings */
     private Shuffler<DataLine> buffer;
     /** array containing last value for each column */
@@ -37,7 +40,7 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
     /**
      * This class is used to store lines for later output.
      */
-    private class DataLine {
+    protected class DataLine {
         private String label;
         private double[] data;
 
@@ -61,6 +64,26 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
                 if (keepCol[i])
                     stringBuffer.append(delim).append(Double.toString(this.data[i]));
             }
+            return stringBuffer.toString();
+        }
+
+        /**
+         * @return the classification representation of this line
+         */
+        public String toClassString() {
+            stringBuffer.clear().append(this.label);
+            for (int i = 0; i < data.length; i++) {
+                if (keepCol[i])
+                    stringBuffer.append(delim).append(Double.toString(this.data[i]));
+            }
+            stringBuffer.append(delim);
+            double production = this.data[data.length - 1];
+            if (production <= 0.0)
+                stringBuffer.append("None");
+            else if (production <= 0.8)
+                stringBuffer.append("Low");
+            else
+                stringBuffer.append("High");
             return stringBuffer.toString();
         }
     }
@@ -130,8 +153,8 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
             }
         }
         // Save the production and density.
-        this.lastValue[n - 2] = production;
-        this.lastValue[n - 1] = density;
+        this.lastValue[n - 1] = production;
+        this.lastValue[n - 2] = density;
         // Add this row to the output buffer.
         this.buffer.add(new DataLine(sample.toString(), this.lastValue));
     }
@@ -145,18 +168,26 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
             if (this.keepCol[i])
                 this.stringBuffer.append(delim).append(titles[i]);
         }
-        this.stringBuffer.append(delim).append("production").append(delim).append("density");
+        this.stringBuffer.append(delim).append("density").append(delim).append("production");
         String header = this.stringBuffer.toString();
         this.registerHeader(header);
-        this.writer.println(header);
         // Scramble the output.
         log.info("Shuffling data lines for output.");
         this.buffer.shuffle(this.buffer.size());
         // Spool it out.
         log.info("Unspooling data lines.");
         for (DataLine line : this.buffer)
-            this.writer.println(line.toString());
+            this.writeLine(line);
         this.writer.close();
+    }
+
+    /**
+     * Write out the current data line in the appropriate format.
+     *
+     * @param line		data line to write
+     */
+    protected void writeLine(DataLine line) {
+        this.writer.println(line.toString());
     }
 
     /**
@@ -165,6 +196,30 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
      * @param header	proposed header line
      */
     protected void registerHeader(String header) {
+        this.writer.println(header);
+    }
+
+    /**
+     * Initialize the output directory for machine learning.
+     *
+     * @param outDir	output directory
+     *
+     * @throws IOException
+     */
+    protected void initDirectory(File outDir) throws IOException {
+        if (! outDir.isDirectory()) {
+            // Here we must create the directory.
+            log.info("Creating output directory {}.", outDir);
+            FileUtils.forceMkdir(outDir);
+        } else {
+            // Here we must erase the current directory contents.
+            log.info("Erasing output directory {}.", outDir);
+            FileUtils.cleanDirectory(outDir);
+        }
+        // Set up the main output file.
+        File dataFile = new File(outDir, "data.tbl");
+        log.info("Training/testing set will be output to {}.", dataFile);
+        this.setupDataFile(dataFile, "\t");
     }
 
 }
