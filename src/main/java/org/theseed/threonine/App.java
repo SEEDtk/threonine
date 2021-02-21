@@ -12,6 +12,7 @@ import org.theseed.utils.BaseProcessor;
  * thrall		generate a prediction input file for all possible samples
  * impact		determine the impact of each sample fragment in a set of predictions
  * thrBuild		process experiment results to produce the input for "thrfix"
+ * rnaSeqRep	compare RNA seq expression data for two samples
  *
  */
 public class App
@@ -38,6 +39,12 @@ public class App
             break;
         case "thrBuild" :
             processor = new ThrBuildProcessor();
+            break;
+        case "rnaSeqComp" :
+            processor = new RnaSeqCompareProcessor();
+            break;
+        case "rnaSeqReps" :
+            processor = new RnaSeqRepsProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
