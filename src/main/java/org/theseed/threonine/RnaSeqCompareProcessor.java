@@ -36,7 +36,7 @@ public class RnaSeqCompareProcessor extends RnaSeqCompareBaseProcessor {
 
     @Override
     protected void setDefaults() {
-        this.setBaseDefaults();
+        this.setCompareDefaults();
     }
 
     @Override

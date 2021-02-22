@@ -3,25 +3,15 @@
  */
 package org.theseed.threonine;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.math3.stat.descriptive.SummaryStatistics;
-import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.theseed.counters.RatingList;
 import org.theseed.rna.RnaData;
 import org.theseed.rna.RnaData.Row;
-import org.theseed.utils.BaseProcessor;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This is a base class for RNA Seq expression data comparison.  It contains the key parameter, plus the
@@ -30,34 +20,19 @@ import org.theseed.utils.ParseFailureException;
  * @author Bruce Parrello
  *
  */
-public abstract class RnaSeqCompareBaseProcessor extends BaseProcessor {
-
-    // FIELDS
-    /** logging facility */
-    protected static Logger log = LoggerFactory.getLogger(RnaSeqCompareBaseProcessor.class);
-    /** RNA sequence database */
-    private RnaData data;
-    /** output stream for report */
-    private OutputStream outStream;
+public abstract class RnaSeqCompareBaseProcessor extends RnaSeqBaseProcessor {
 
     // COMMAND-LINE OPTIONS
 
     /** number of outliers to display */
     @Option(name = "-n", aliases = { "--num" }, metaVar = "10", usage = "number of outliers to display")
     private int numOutliers;
-    /** output file, if not STDIN */
-    @Option(name = "-o", aliases = { "--output" }, metaVar = "report.txt", usage = "output file name (if not STDOUT)")
-    private File outFile;
-    /** name of the RNA seq database file */
-    @Argument(index = 0, metaVar = "rnaData.ser", usage = "name of RNA Seq database file", required = true)
-    private File rnaDataFile;
-
     /**
      * Set the defaults for this class's options.
      */
-    protected void setBaseDefaults() {
+    protected void setCompareDefaults() {
         this.numOutliers = 10;
-        this.outFile = null;
+        this.setBaseDefaults();
     }
     /**
      * Generate the report for a list of samples.
@@ -72,7 +47,7 @@ public abstract class RnaSeqCompareBaseProcessor extends BaseProcessor {
         int[] cols = new int[samples.size()];
         for (int i = 0; i < cols.length; i++) {
             String sampleId = samples.get(i);
-            Integer colIdx = this.data.findColIdx(sampleId);
+            Integer colIdx = this.getData().findColIdx(sampleId);
             if (colIdx == null)
                 throw new IllegalArgumentException("Invalid sample ID {}:  not found in RNA database.");
             cols[i] = colIdx;
@@ -83,12 +58,13 @@ public abstract class RnaSeqCompareBaseProcessor extends BaseProcessor {
         // The key statistics will be stored in this object.
         SummaryStatistics retVal = new SummaryStatistics();
         log.info("Processing RNA data rows.");
-        for (RnaData.Row row : this.data) {
+        for (RnaData.Row row : this.getData()) {
             // Compute the spread.
             double range = this.computeSpread(row, cols);
             retVal.addValue(range);
             // Add the spread to the outlier list.
-            outliers.add(row.getFeat(), range);
+            if (range > 0.0)
+                outliers.add(row.getFeat(), range);
         }
         // Now, we do the report.  Identify the samples being compared.
         writer.println("SAMPLE COMPARISON");
@@ -129,53 +105,6 @@ public abstract class RnaSeqCompareBaseProcessor extends BaseProcessor {
         }
         if (max < min) max = min;
         return max - min;
-    }
-
-    /**
-     * Prepare the output stream.
-     *
-     * @throws IOException
-     */
-    protected void setupOutput() throws IOException {
-        // Establish the output stream.
-        if (this.outFile == null) {
-            log.info("Report will be written to standard output.");
-            this.outStream = System.out;
-        } else {
-            log.info("Report will be written to {}.", this.outFile);
-            this.outStream = new FileOutputStream(this.outFile);
-        }
-    }
-
-    /**
-     * @return a print writer for the output stream
-     */
-    protected PrintWriter getWriter() {
-        return new PrintWriter(this.outStream);
-    }
-
-    /**
-     * @return a list of the jobs for the RNA database
-     */
-    protected List<RnaData.JobData> getJobs() {
-        return this.data.getSamples();
-    }
-
-    /**
-     * Load the RNA database.
-     *
-     * @throws IOException
-     * @throws ParseFailureException
-     */
-    protected void loadRnaData() throws IOException, ParseFailureException {
-        if (! this.rnaDataFile.exists())
-            throw new FileNotFoundException("RNA Seq data file " + this.rnaDataFile + " not found.");
-        log.info("Loading RNA seq data from {}.", this.rnaDataFile);
-        try {
-            this.data = RnaData.load(this.rnaDataFile);
-        } catch (ClassNotFoundException e) {
-            throw new ParseFailureException("Version error in " + this.rnaDataFile + ": " + e.getMessage());
-        }
     }
 
 }

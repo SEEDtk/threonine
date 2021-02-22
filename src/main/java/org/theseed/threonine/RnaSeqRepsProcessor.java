@@ -38,7 +38,7 @@ public class RnaSeqRepsProcessor extends RnaSeqCompareBaseProcessor {
 
     @Override
     protected void setDefaults() {
-        this.setBaseDefaults();
+        this.setCompareDefaults();
     }
 
     @Override
@@ -75,7 +75,7 @@ public class RnaSeqRepsProcessor extends RnaSeqCompareBaseProcessor {
             writer.println(dashes);
             for (Map.Entry<String, SummaryStatistics> entry : statList.entrySet()) {
                 SummaryStatistics stats = entry.getValue();
-                writer.format("%-40s %14.2f %14.2f %14.2f", entry.getKey(), stats.getMean(),
+                writer.format("%-40s %14.2f %14.2f %14.2f%n", entry.getKey(), stats.getMean(),
                         stats.getStandardDeviation(), stats.getMax());
             }
             log.info("All done. {} groups output.", statList.size());

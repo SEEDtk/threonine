@@ -46,6 +46,9 @@ public class App
         case "rnaSeqReps" :
             processor = new RnaSeqRepsProcessor();
             break;
+        case "rnaSeqClass" :
+            processor = new RnaSeqClassProcessor();
+            break;
         default:
             throw new RuntimeException("Invalid command " + command);
         }

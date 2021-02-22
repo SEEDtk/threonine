@@ -12,6 +12,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.theseed.io.Shuffler;
 import org.theseed.proteins.SampleId;
+import org.theseed.threonine.Production;
 
 /**
  * This produces a text version of the production table designed for machine learning.  It supports
@@ -78,12 +79,7 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
             }
             stringBuffer.append(delim);
             double production = this.data[data.length - 1];
-            if (production <= 0.0)
-                stringBuffer.append("None");
-            else if (production <= 0.8)
-                stringBuffer.append("Low");
-            else
-                stringBuffer.append("High");
+            stringBuffer.append(Production.getLevel(production));
             return stringBuffer.toString();
         }
     }
