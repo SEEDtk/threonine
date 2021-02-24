@@ -13,6 +13,7 @@ import org.theseed.utils.BaseProcessor;
  * impact		determine the impact of each sample fragment in a set of predictions
  * thrBuild		process experiment results to produce the input for "thrfix"
  * rnaSeqRep	compare RNA seq expression data for two samples
+ * rnaSeqClass	produce a random forest training set from the rna seq database
  *
  */
 public class App

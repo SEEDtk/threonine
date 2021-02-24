@@ -36,7 +36,7 @@ import org.theseed.utils.ParseFailureException;
  * -o	output file; the default is to output to STDOUT
  *
  * --minGood	percent of samples that must have data on a feature for it to be considered useful (default is 90)
- *
+ * --minQual	minimum percent quality for a sample to be considered valid (default is 40)
  *
  * @author Bruce Parrello
  *
@@ -48,6 +48,9 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
     /** minimum percent of good values required to use a peg */
     @Option(name = "--minGood", metaVar = "95", usage = "minimum percent of expression values that must be good for each peg used")
     private int minGood;
+    /** minimum percent quality rating for an acceptable sample */
+    @Option(name = "--minQual", metaVar = "80", usage = "minimum percent quality for a sample to be considered valid")
+    private double minQual;
 
     /**
      * This class contains the information about a sample we need to process it.
@@ -122,6 +125,7 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
     @Override
     protected void setDefaults() {
         this.minGood = 90;
+        this.minQual = 40;
         this.setBaseDefaults();
     }
 
@@ -134,6 +138,8 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         // Insure the threshold is valid.
         if (this.minGood > 100)
             throw new ParseFailureException("Invalid minGood threshold.  Must be 100 or less.");
+        if (this.minQual >= 100.0)
+            throw new ParseFailureException("Invalid minQual threshold.  Must be less than 100.");
         return true;
     }
 
@@ -145,11 +151,11 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         Map<String, JobInfo> jobMap = new HashMap<String, JobInfo>(jobs.size());
         // Loop through the jobs, keeping the ones with production data.
         for (RnaData.JobData job : jobs) {
-            if (Double.isFinite(job.getProduction()))
+            if (Double.isFinite(job.getProduction()) && job.getQuality() >= this.minQual)
                  jobMap.put(job.getName(), new JobInfo(this.getData(), job));
         }
         int numJobs = jobMap.size();
-        log.info("{} samples with production data found in database.", numJobs);
+        log.info("{} good samples with production data found in database.", numJobs);
         // Compute the number of good rows required for a peg to be used.  We simulate rounding.
         int threshold = (numJobs * this.minGood + 50) / 100;
         // This will track the number of bad feature values found in the good rows.

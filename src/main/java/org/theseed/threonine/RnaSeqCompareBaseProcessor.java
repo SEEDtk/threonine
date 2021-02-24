@@ -9,6 +9,7 @@ import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.math3.stat.descriptive.SummaryStatistics;
 import org.kohsuke.args4j.Option;
+import org.theseed.counters.Rating;
 import org.theseed.counters.RatingList;
 import org.theseed.rna.RnaData;
 import org.theseed.rna.RnaData.Row;
@@ -79,7 +80,7 @@ public abstract class RnaSeqCompareBaseProcessor extends RnaSeqBaseProcessor {
         String dashes = StringUtils.repeat('-', header.length());
         writer.format("     %s%n", header);
         writer.format("     %s%n", dashes);
-        for (RatingList.Rating<RnaData.FeatureData> rating : outliers) {
+        for (Rating<RnaData.FeatureData> rating : outliers) {
             RnaData.FeatureData feat = rating.getKey();
             writer.format("     %-30s %-8s %14.2f%n", feat.getId(), feat.getGene(), rating.getRating());
         }
