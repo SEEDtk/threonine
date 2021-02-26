@@ -11,8 +11,8 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.SortedSet;
-import java.util.TreeSet;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
@@ -36,7 +36,7 @@ import org.theseed.utils.ParseFailureException;
  * -o	output file; the default is to output to STDOUT
  *
  * --minGood	percent of samples that must have data on a feature for it to be considered useful (default is 90)
- * --minQual	minimum percent quality for a sample to be considered valid (default is 40)
+ * --all		minimum percent quality for a sample to be considered valid (default is 40)
  *
  * @author Bruce Parrello
  *
@@ -48,9 +48,9 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
     /** minimum percent of good values required to use a peg */
     @Option(name = "--minGood", metaVar = "95", usage = "minimum percent of expression values that must be good for each peg used")
     private int minGood;
-    /** minimum percent quality rating for an acceptable sample */
-    @Option(name = "--minQual", metaVar = "80", usage = "minimum percent quality for a sample to be considered valid")
-    private double minQual;
+    /** if specified, suspicious samples will be included */
+    @Option(name = "--all", usage = "included suspicious samples")
+    private boolean useAll;
 
     /**
      * This class contains the information about a sample we need to process it.
@@ -125,7 +125,7 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
     @Override
     protected void setDefaults() {
         this.minGood = 90;
-        this.minQual = 40;
+        this.useAll = false;
         this.setBaseDefaults();
     }
 
@@ -138,8 +138,6 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         // Insure the threshold is valid.
         if (this.minGood > 100)
             throw new ParseFailureException("Invalid minGood threshold.  Must be 100 or less.");
-        if (this.minQual >= 100.0)
-            throw new ParseFailureException("Invalid minQual threshold.  Must be less than 100.");
         return true;
     }
 
@@ -151,7 +149,7 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         Map<String, JobInfo> jobMap = new HashMap<String, JobInfo>(jobs.size());
         // Loop through the jobs, keeping the ones with production data.
         for (RnaData.JobData job : jobs) {
-            if (Double.isFinite(job.getProduction()) && job.getQuality() >= this.minQual)
+            if (Double.isFinite(job.getProduction()) && (this.useAll || ! job.isSuspicious()))
                  jobMap.put(job.getName(), new JobInfo(this.getData(), job));
         }
         int numJobs = jobMap.size();
@@ -161,16 +159,20 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         // This will track the number of bad feature values found in the good rows.
         int totalValues = 0;
         double goodValues = 0.0;
-        // Now we need to find the valid features.
+        // Now we need to find the valid features.  We will create a map of each feature's column
+        // name to its feature ID.
         log.info("Searching for good pegs with threshold of {} samples.", threshold);
-        SortedSet<String> goodFids = new TreeSet<String>(new NaturalSort());
+        SortedMap<String, String> goodFids = new TreeMap<String, String>(new NaturalSort());
         for (RnaData.Row row : this.getData()) {
             String fid = row.getFeat().getId();
             int valid = (int) jobMap.values().stream().filter(x -> x.isValid(row)).count();
             if (valid >= threshold) {
                 totalValues += numJobs;
                 goodValues += valid;
-                goodFids.add(fid);
+                String gene = row.getFeat().getGene();
+                String suffix = StringUtils.substringAfter(fid, ".peg");
+                if (gene.isEmpty()) gene = "peg";
+                goodFids.put(gene + suffix, fid);
             }
         }
         log.info("{} good features found for the good samples.  {}% of the values were good.",
@@ -182,22 +184,15 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
                 jobMap.keySet().stream().collect(Collectors.toMap(x -> x, x -> new double[goodFids.size()]));
         // Build a data row for each sample.
         log.info("Collecting data for each sample.");
-        for (RnaData.Row row : this.getData()) {
-            String fid = row.getFeat().getId();
-            if (goodFids.contains(fid)) {
-                // Here we are going to use this row.  Build its column title.
-                String gene = row.getFeat().getGene();
-                if (gene.isEmpty())
-                    colTitles.add("p" + StringUtils.substringAfter(fid, ".peg"));
-                else
-                    colTitles.add(gene);
-                // Now get its column index.
-                int i = colTitles.size() - 1;
-                // Process each sample.
-                for (Map.Entry<String, JobInfo> entry : jobMap.entrySet()) {
-                    double[] sampleData = sampleDataMap.get(entry.getKey());
-                    sampleData[i] = entry.getValue().getExpression(row);
-                }
+        for (Map.Entry<String, String> fidEntry : goodFids.entrySet()) {
+            RnaData.Row row = this.getData().getRow(fidEntry.getValue());
+            colTitles.add(fidEntry.getKey());
+            // Compute the column index of this feature.
+            int i = colTitles.size() - 1;
+            // Process each sample, filling in the feature's expression value.
+            for (Map.Entry<String, JobInfo> entry : jobMap.entrySet()) {
+                double[] sampleData = sampleDataMap.get(entry.getKey());
+                sampleData[i] = entry.getValue().getExpression(row);
             }
         }
         log.info("{} feature rows processed.", colTitles.size());
