@@ -11,6 +11,7 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.util.List;
 
+import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
@@ -103,6 +104,20 @@ public abstract class RnaSeqBaseProcessor extends BaseProcessor {
      */
     public RnaData getData() {
         return data;
+    }
+
+    /**
+     * @return the fancy gene-name ID for a row
+     *
+     * @param row	row of interest
+     */
+    public String computeGeneId(RnaData.Row row) {
+        String fid = row.getFeat().getId();
+        String gene = row.getFeat().getGene();
+        String suffix = StringUtils.substringAfter(fid, ".peg");
+        if (gene.isEmpty()) gene = "peg";
+        String retVal = gene + suffix;
+        return retVal;
     }
 
 }

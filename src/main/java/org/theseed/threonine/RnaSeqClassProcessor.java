@@ -3,20 +3,27 @@
  */
 package org.theseed.threonine;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Option;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.theseed.genome.Feature;
+import org.theseed.genome.Genome;
 import org.theseed.reports.NaturalSort;
 import org.theseed.rna.RnaData;
 import org.theseed.utils.ParseFailureException;
@@ -37,11 +44,19 @@ import org.theseed.utils.ParseFailureException;
  *
  * --minGood	percent of samples that must have data on a feature for it to be considered useful (default is 90)
  * --all		minimum percent quality for a sample to be considered valid (default is 40)
+ * --sub		if specified, the name of a GTO file; only features in the GTO file's subsystems will be output
  *
  * @author Bruce Parrello
  *
  */
 public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
+
+    // FIELDS
+    /** logging facility */
+    protected static Logger log = LoggerFactory.getLogger(RnaSeqClassProcessor.class);
+    /** set of features in subsystems */
+    private Set<String> subFids;
+
 
     // COMMAND-LINE OPTIONS
 
@@ -49,83 +64,17 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
     @Option(name = "--minGood", metaVar = "95", usage = "minimum percent of expression values that must be good for each peg used")
     private int minGood;
     /** if specified, suspicious samples will be included */
-    @Option(name = "--all", usage = "included suspicious samples")
+    @Option(name = "--all", usage = "include suspicious samples")
     private boolean useAll;
-
-    /**
-     * This class contains the information about a sample we need to process it.
-     */
-    private static class JobInfo {
-
-        /** column index where we can find the job's weight */
-        private int colIdx;
-        /** production amount */
-        private double production;
-        /** optical density */
-        private double growth;
-
-        /**
-         * Extract the information we need to process a particular sample.
-         *
-         * @param database	parent RNA seq database
-         * @param job		job descriptor
-         */
-        protected JobInfo(RnaData database, RnaData.JobData job) {
-            this.colIdx = database.getColIdx(job.getName());
-            this.production = job.getProduction();
-            this.growth = job.getOpticalDensity();
-        }
-
-        /**
-         * @return the sample's expression data for a feature
-         *
-         * @param featureRow	RNA seq database row for the feature
-         */
-        public double getExpression(RnaData.Row featureRow) {
-            RnaData.Weight weight = featureRow.getWeight(this.colIdx);
-            double retVal = 0.0;
-            if (weight != null) {
-                retVal = weight.getWeight();
-                if (! Double.isFinite(retVal))
-                    retVal = 0.0;
-            }
-            return retVal;
-        }
-
-        /**
-         * @return TRUE if the sample's expression data is valid for a feature
-         *
-         * @param featureRow	RNA seq database row for the feature
-         */
-        public boolean isValid(RnaData.Row featureRow) {
-            RnaData.Weight weight = featureRow.getWeight(this.colIdx);
-            boolean retVal = (weight != null);
-            if (retVal)
-                retVal = weight.isExactHit() && Double.isFinite(weight.getWeight());
-            return retVal;
-        }
-
-        /**
-         * @return the production amount
-         */
-        public double getProduction() {
-            return this.production;
-        }
-
-        /**
-         * @return the optical density (growth)
-         */
-        public double getGrowth() {
-            return this.growth;
-        }
-
-    }
-
+    /** if specified, only features in subsystems will be used */
+    @Option(name = "--sub", metaVar = "genome.gto", usage = "genome whose subsystems will be used to filter the features")
+    private File subGenome;
 
     @Override
     protected void setDefaults() {
         this.minGood = 90;
         this.useAll = false;
+        this.subGenome = null;
         this.setBaseDefaults();
     }
 
@@ -138,6 +87,18 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         // Insure the threshold is valid.
         if (this.minGood > 100)
             throw new ParseFailureException("Invalid minGood threshold.  Must be 100 or less.");
+        if (this.subGenome == null) {
+            this.subFids = null;
+            log.info("No subsystem filtering will be used.");
+        } else {
+            Genome genome = new Genome(this.subGenome);
+            this.subFids = new HashSet<String>(3000);
+            for (Feature feat : genome.getPegs()) {
+                if (! feat.getSubsystems().isEmpty())
+                    this.subFids.add(feat.getId());
+            }
+            log.info("{} features found in subsystems of {}.", this.subFids.size(), genome);
+        }
         return true;
     }
 
@@ -146,11 +107,11 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         // Isolate the samples of interest.  For each one, we need its column index.
         log.info("Searching for good samples.");
         Collection<RnaData.JobData> jobs = this.getJobs();
-        Map<String, JobInfo> jobMap = new HashMap<String, JobInfo>(jobs.size());
+        Map<String, RnaJobInfo> jobMap = new HashMap<String, RnaJobInfo>(jobs.size());
         // Loop through the jobs, keeping the ones with production data.
         for (RnaData.JobData job : jobs) {
             if (Double.isFinite(job.getProduction()) && (this.useAll || ! job.isSuspicious()))
-                 jobMap.put(job.getName(), new JobInfo(this.getData(), job));
+                 jobMap.put(job.getName(), new RnaJobInfo(this.getData(), job));
         }
         int numJobs = jobMap.size();
         log.info("{} good samples with production data found in database.", numJobs);
@@ -165,14 +126,14 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         SortedMap<String, String> goodFids = new TreeMap<String, String>(new NaturalSort());
         for (RnaData.Row row : this.getData()) {
             String fid = row.getFeat().getId();
-            int valid = (int) jobMap.values().stream().filter(x -> x.isValid(row)).count();
-            if (valid >= threshold) {
-                totalValues += numJobs;
-                goodValues += valid;
-                String gene = row.getFeat().getGene();
-                String suffix = StringUtils.substringAfter(fid, ".peg");
-                if (gene.isEmpty()) gene = "peg";
-                goodFids.put(gene + suffix, fid);
+            if (this.subFids == null || this.subFids.contains(fid)) {
+                int valid = (int) jobMap.values().stream().filter(x -> x.isValid(row)).count();
+                if (valid >= threshold) {
+                    totalValues += numJobs;
+                    goodValues += valid;
+                    String fidName = this.computeGeneId(row);
+                    goodFids.put(fidName, fid);
+                }
             }
         }
         log.info("{} good features found for the good samples.  {}% of the values were good.",
@@ -190,7 +151,7 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
             // Compute the column index of this feature.
             int i = colTitles.size() - 1;
             // Process each sample, filling in the feature's expression value.
-            for (Map.Entry<String, JobInfo> entry : jobMap.entrySet()) {
+            for (Map.Entry<String, RnaJobInfo> entry : jobMap.entrySet()) {
                 double[] sampleData = sampleDataMap.get(entry.getKey());
                 sampleData[i] = entry.getValue().getExpression(row);
             }
@@ -202,7 +163,7 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
             writer.format("sample_id\t%s\tproduction\tgrowth\tprod_level%n", StringUtils.join(colTitles, "\t"));
             log.info("Writing data rows.");
             for (Map.Entry<String, double[]> entry : sampleDataMap.entrySet()) {
-                JobInfo info = jobMap.get(entry.getKey());
+                RnaJobInfo info = jobMap.get(entry.getKey());
                 String growth = (Double.isFinite(info.getGrowth()) ? Double.toString(info.getGrowth()) : "");
                 String dataCols = Arrays.stream(entry.getValue()).mapToObj(v -> Double.toString(v)).collect(Collectors.joining("\t"));
                 writer.format("%s\t%s\t%s\t%14.4f\t%s%n", entry.getKey(), dataCols, growth, info.getProduction(),
