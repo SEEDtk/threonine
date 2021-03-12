@@ -45,6 +45,7 @@ import org.theseed.utils.ParseFailureException;
  * --minGood	percent of samples that must have data on a feature for it to be considered useful (default is 90)
  * --all		minimum percent quality for a sample to be considered valid (default is 40)
  * --sub		if specified, the name of a GTO file; only features in the GTO file's subsystems will be output
+ * --method		method for reporting the expression values (RAW, STD, TRIAGE)
  *
  * @author Bruce Parrello
  *
@@ -69,6 +70,9 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
     /** if specified, only features in subsystems will be used */
     @Option(name = "--sub", metaVar = "genome.gto", usage = "genome whose subsystems will be used to filter the features")
     private File subGenome;
+    /** method to use for converting expression value */
+    @Option(name = "--method", usage = "method to use for converting expression value to input value")
+    private ExpressionConverter.Type method;
 
     @Override
     protected void setDefaults() {
@@ -76,6 +80,7 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         this.useAll = false;
         this.subGenome = null;
         this.setBaseDefaults();
+        this.method = ExpressionConverter.Type.RAW;
     }
 
     @Override
@@ -144,16 +149,18 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         Map<String, double[]> sampleDataMap =
                 jobMap.keySet().stream().collect(Collectors.toMap(x -> x, x -> new double[goodFids.size()]));
         // Build a data row for each sample.
+        ExpressionConverter converter = this.method.create(this);
         log.info("Collecting data for each sample.");
         for (Map.Entry<String, String> fidEntry : goodFids.entrySet()) {
             RnaData.Row row = this.getData().getRow(fidEntry.getValue());
             colTitles.add(fidEntry.getKey());
             // Compute the column index of this feature.
             int i = colTitles.size() - 1;
+            converter.analyzeRow(row);
             // Process each sample, filling in the feature's expression value.
             for (Map.Entry<String, RnaJobInfo> entry : jobMap.entrySet()) {
                 double[] sampleData = sampleDataMap.get(entry.getKey());
-                sampleData[i] = entry.getValue().getExpression(row);
+                sampleData[i] = converter.getExpression(entry.getValue());
             }
         }
         log.info("{} feature rows processed.", colTitles.size());
