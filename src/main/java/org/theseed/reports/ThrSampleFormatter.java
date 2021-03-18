@@ -17,7 +17,7 @@ import org.apache.commons.text.TextStringBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.io.LineReader;
-import org.theseed.proteins.SampleId;
+import org.theseed.samples.SampleId;
 
 /**
  * This class contains utilities for converting sample IDs to machine learning inputs.

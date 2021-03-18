@@ -10,7 +10,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 
-import org.theseed.proteins.SampleId;
+import org.theseed.samples.SampleId;
 
 /**
  * This is the base class for all the threonine-production formatting methods.

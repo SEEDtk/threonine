@@ -14,8 +14,8 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.math3.stat.descriptive.SummaryStatistics;
-import org.theseed.proteins.SampleId;
 import org.theseed.rna.RnaData;
+import org.theseed.samples.SampleId;
 import org.theseed.utils.ParseFailureException;
 
 /**

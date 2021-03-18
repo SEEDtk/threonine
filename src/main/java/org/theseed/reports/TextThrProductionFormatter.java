@@ -11,7 +11,7 @@ import java.io.PrintWriter;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.theseed.io.Shuffler;
-import org.theseed.proteins.SampleId;
+import org.theseed.samples.SampleId;
 import org.theseed.threonine.Production;
 
 /**
