@@ -46,6 +46,7 @@ import org.theseed.utils.ParseFailureException;
  * --all		minimum percent quality for a sample to be considered valid (default is 40)
  * --sub		if specified, the name of a GTO file; only features in the GTO file's subsystems will be output
  * --method		method for reporting the expression values (RAW, STD, TRIAGE)
+ * --minFeats	percent of features in a sample that must have data for the sample to be good (default is 75)
  *
  * @author Bruce Parrello
  *
@@ -64,12 +65,19 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
     /** minimum percent of good values required to use a peg */
     @Option(name = "--minGood", metaVar = "95", usage = "minimum percent of expression values that must be good for each peg used")
     private int minGood;
+
     /** if specified, suspicious samples will be included */
     @Option(name = "--all", usage = "include suspicious samples")
     private boolean useAll;
+
     /** if specified, only features in subsystems will be used */
     @Option(name = "--sub", metaVar = "genome.gto", usage = "genome whose subsystems will be used to filter the features")
     private File subGenome;
+
+    /** mininum percent of good pegs required to use a sample */
+    @Option(name = "--minFeats", metaVar = "50", usage = "minimum percent of expression values that must be good for each sample used")
+    private int minFeats;
+
     /** method to use for converting expression value */
     @Option(name = "--method", usage = "method to use for converting expression value to input value")
     private ExpressionConverter.Type method;
@@ -77,6 +85,7 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
     @Override
     protected void setDefaults() {
         this.minGood = 90;
+        this.minFeats = 50;
         this.useAll = false;
         this.subGenome = null;
         this.setBaseDefaults();
@@ -89,9 +98,12 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         this.loadRnaData();
         // Connect the output stream.
         this.setupOutput();
-        // Insure the threshold is valid.
+        // Insure the thresholds are valid.
         if (this.minGood > 100)
             throw new ParseFailureException("Invalid minGood threshold.  Must be 100 or less.");
+        if (this.minFeats > 100)
+            throw new ParseFailureException("Invalid minFeats threshold.  Must be 100 or less.");
+        // Validate the subsystem limits.
         if (this.subGenome == null) {
             this.subFids = null;
             log.info("No subsystem filtering will be used.");
@@ -113,10 +125,17 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         log.info("Searching for good samples.");
         Collection<RnaData.JobData> jobs = this.getJobs();
         Map<String, RnaJobInfo> jobMap = new HashMap<String, RnaJobInfo>(jobs.size());
+        // Compute the number of good features needed in a sample.
+        int fThreshold = (this.getData().rows() * this.minFeats + 50) / 100;
         // Loop through the jobs, keeping the ones with production data.
         for (RnaData.JobData job : jobs) {
-            if (Double.isFinite(job.getProduction()) && (this.useAll || ! job.isSuspicious()))
-                 jobMap.put(job.getName(), new RnaJobInfo(this.getData(), job));
+            if (Double.isFinite(job.getProduction()) && (this.useAll || ! job.isSuspicious())) {
+                RnaJobInfo jobInfo = new RnaJobInfo(this.getData(), job);
+                // Count the good features in this sample.
+                int fCount = (int) this.getData().getRows().stream().filter(x -> jobInfo.isValid(x)).count();
+                if (fCount >= fThreshold)
+                    jobMap.put(job.getName(), new RnaJobInfo(this.getData(), job));
+            }
         }
         int numJobs = jobMap.size();
         log.info("{} good samples with production data found in database.", numJobs);
