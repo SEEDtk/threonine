@@ -1,7 +1,7 @@
 /**
  *
  */
-package org.theseed.threonine;
+package org.theseed.rna;
 
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 
@@ -21,7 +21,7 @@ public class StandardScoreExpressionConverter extends ExpressionConverter {
 
     @Override
     protected void processRow() {
-        DescriptiveStatistics stats = this.getStats();
+        DescriptiveStatistics stats = getStats(this.getRow());
         this.mean = stats.getMean();
         this.sdev = stats.getStandardDeviation();
     }

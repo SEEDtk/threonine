@@ -1,9 +1,7 @@
 /**
  *
  */
-package org.theseed.threonine;
-
-import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+package org.theseed.rna;
 
 /**
  * This version of the expression converter computes the mean expression value for each row, and then it returns 0, 1, or -1
@@ -19,13 +17,22 @@ public class TriageExpressionConverter extends ExpressionConverter {
     private double highLimit;
     /** maximum value for a -1 result */
     private double lowLimit;
+    /** baseline expression value provider */
+    private IBaselineProvider baselineComputer;
+
+    /**
+     * Construct the triage expression converter.  We get from the controlling processor the algorithm for
+     * computing the baseline.
+     */
+    public TriageExpressionConverter(IBaselineProvider processor) {
+        this.baselineComputer = processor;
+    }
 
     @Override
     protected void processRow() {
-        DescriptiveStatistics stats = getStats();
-        double triMean = ((stats.getPercentile(25) + stats.getPercentile(75)) / 2.0 + stats.getPercentile(50)) / 2.0;
-        this.highLimit = 2.0 * triMean;
-        this.lowLimit = triMean / 2.0;
+        double baseline = this.baselineComputer.getBaseline(this.getRow());
+        this.highLimit = 2.0 * baseline;
+        this.lowLimit = baseline / 2.0;
     }
 
     @Override

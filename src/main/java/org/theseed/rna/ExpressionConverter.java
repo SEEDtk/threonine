@@ -1,10 +1,11 @@
 /**
  *
  */
-package org.theseed.threonine;
+package org.theseed.rna;
 
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
-import org.theseed.rna.RnaData;
+import org.theseed.threonine.RnaJobInfo;
+import org.theseed.threonine.RnaSeqClassProcessor;
 
 /**
  * This is the base class for converting RNA Seq expression data prior to output in a training set.  The conversion
@@ -72,7 +73,7 @@ public abstract class ExpressionConverter {
         }, TRIAGE {
             @Override
             public ExpressionConverter create(RnaSeqClassProcessor processor) {
-                return new TriageExpressionConverter();
+                return new TriageExpressionConverter(processor);
             }
         };
 
@@ -103,12 +104,14 @@ public abstract class ExpressionConverter {
     }
 
     /**
-     * @return a descriptive statistics object for the valid expression values in the current row
+     * @return a descriptive statistics object for the valid expression values in the specified row
+     *
+     * @param row	RNA database row for the feature of interest
      */
-    protected DescriptiveStatistics getStats() {
+    public static DescriptiveStatistics getStats(RnaData.Row row) {
         DescriptiveStatistics stats = new DescriptiveStatistics();
-        for (int i = 0; i < this.row.size(); i++) {
-            RnaData.Weight w = this.row.getWeight(i);
+        for (int i = 0; i < row.size(); i++) {
+            RnaData.Weight w = row.getWeight(i);
             if (w != null && w.isExactHit() && Double.isFinite(w.getWeight()))
                 stats.addValue(w.getWeight());
         }

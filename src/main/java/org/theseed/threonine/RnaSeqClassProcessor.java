@@ -4,6 +4,7 @@
 package org.theseed.threonine;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -25,7 +26,12 @@ import org.slf4j.LoggerFactory;
 import org.theseed.genome.Feature;
 import org.theseed.genome.Genome;
 import org.theseed.reports.NaturalSort;
+import org.theseed.rna.BaselineComputer;
+import org.theseed.rna.ExpressionConverter;
+import org.theseed.rna.IBaselineParameters;
+import org.theseed.rna.IBaselineProvider;
 import org.theseed.rna.RnaData;
+import org.theseed.rna.RnaData.Row;
 import org.theseed.utils.ParseFailureException;
 
 /**
@@ -46,18 +52,23 @@ import org.theseed.utils.ParseFailureException;
  * --all		minimum percent quality for a sample to be considered valid (default is 40)
  * --sub		if specified, the name of a GTO file; only features in the GTO file's subsystems will be output
  * --method		method for reporting the expression values (RAW, STD, TRIAGE)
- * --minFeats	percent of features in a sample that must have data for the sample to be good (default is 75)
+ * --minFeats	percent of features in a sample that must have data for the sample to be good (default is 50)
+ * --baseline	method for computing baseline value in triage output (TRIMEAN, SAMPLE, FILE)
+ * --baseId		ID of the base sample for a SAMPLE baseline
+ * --baseFile	name of file containing baseline data for a FILE baseline
  *
  * @author Bruce Parrello
  *
  */
-public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
+public class RnaSeqClassProcessor extends RnaSeqBaseProcessor implements IBaselineProvider, IBaselineParameters {
 
     // FIELDS
     /** logging facility */
     protected static Logger log = LoggerFactory.getLogger(RnaSeqClassProcessor.class);
     /** set of features in subsystems */
     private Set<String> subFids;
+    /** baseline computer */
+    private BaselineComputer baselineComputer;
 
 
     // COMMAND-LINE OPTIONS
@@ -82,6 +93,18 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
     @Option(name = "--method", usage = "method to use for converting expression value to input value")
     private ExpressionConverter.Type method;
 
+    /** method for computing baseline for triage output */
+    @Option(name = "--baseline", usage = "method for computing triage baseline")
+    private BaselineComputer.Type baselineType;
+
+    /** file containing baseline values */
+    @Option(name = "--baseFile", usage = "file containing baseline values for triage type FILE output")
+    private File baseFile;
+
+    /** ID of sample containing baseline values */
+    @Option(name = "--baseId", usage = "sample containing baseline values for triage type SAMPLE output")
+    private String baseSampleId;
+
     @Override
     protected void setDefaults() {
         this.minGood = 90;
@@ -90,6 +113,9 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
         this.subGenome = null;
         this.setBaseDefaults();
         this.method = ExpressionConverter.Type.RAW;
+        this.baselineType = BaselineComputer.Type.TRIMEAN;
+        this.baseFile = null;
+        this.baseSampleId = null;
     }
 
     @Override
@@ -103,6 +129,26 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
             throw new ParseFailureException("Invalid minGood threshold.  Must be 100 or less.");
         if (this.minFeats > 100)
             throw new ParseFailureException("Invalid minFeats threshold.  Must be 100 or less.");
+        // Verify the baseline computation.
+        if (this.method == ExpressionConverter.Type.TRIAGE) {
+            // Here we need to validate the baseline computation method.
+            switch (this.baselineType) {
+            case FILE:
+                if (this.baseFile == null)
+                    throw new ParseFailureException("Baseline value file required for baseline type FILE.");
+                else if (! this.baseFile.canRead())
+                    throw new FileNotFoundException("Baseline value file " + this.baseFile + " not found or unreadable.");
+                break;
+            case SAMPLE:
+                if (this.baseSampleId == null)
+                    throw new ParseFailureException("Baseline sample ID required for baseline type SAMPLE.");
+                break;
+            default:
+                break;
+            }
+            // Create the computation object.
+            this.baselineComputer = this.baselineType.create(this);
+        }
         // Validate the subsystem limits.
         if (this.subGenome == null) {
             this.subFids = null;
@@ -197,6 +243,21 @@ public class RnaSeqClassProcessor extends RnaSeqBaseProcessor {
             }
         }
         log.info("All done.");
+    }
+
+    @Override
+    public double getBaseline(Row row) {
+        return this.baselineComputer.getBaseline(row);
+    }
+
+    @Override
+    public File getFile() {
+        return this.baseFile;
+    }
+
+    @Override
+    public String getSample() {
+        return this.baseSampleId;
     }
 
 }
