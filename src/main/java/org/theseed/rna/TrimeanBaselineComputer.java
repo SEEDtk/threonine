@@ -17,7 +17,7 @@ public class TrimeanBaselineComputer extends BaselineComputer {
 
     @Override
     public double getBaseline(Row row) {
-        DescriptiveStatistics stats = ExpressionConverter.getStats(row);
+        DescriptiveStatistics stats = RnaData.getStats(row);
         double retVal = ((stats.getPercentile(25) + stats.getPercentile(75)) / 2.0 + stats.getPercentile(50)) / 2.0;
         return retVal;
     }

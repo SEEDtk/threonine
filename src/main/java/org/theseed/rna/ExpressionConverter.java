@@ -3,7 +3,6 @@
  */
 package org.theseed.rna;
 
-import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.theseed.threonine.RnaJobInfo;
 import org.theseed.threonine.RnaSeqClassProcessor;
 
@@ -102,23 +101,6 @@ public abstract class ExpressionConverter {
     protected RnaData.Row getRow() {
         return this.row;
     }
-
-    /**
-     * @return a descriptive statistics object for the valid expression values in the specified row
-     *
-     * @param row	RNA database row for the feature of interest
-     */
-    public static DescriptiveStatistics getStats(RnaData.Row row) {
-        DescriptiveStatistics stats = new DescriptiveStatistics();
-        for (int i = 0; i < row.size(); i++) {
-            RnaData.Weight w = row.getWeight(i);
-            if (w != null && w.isExactHit() && Double.isFinite(w.getWeight()))
-                stats.addValue(w.getWeight());
-        }
-        return stats;
-    }
-
-
 
 }
 

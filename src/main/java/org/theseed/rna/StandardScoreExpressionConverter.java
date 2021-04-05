@@ -21,7 +21,7 @@ public class StandardScoreExpressionConverter extends ExpressionConverter {
 
     @Override
     protected void processRow() {
-        DescriptiveStatistics stats = getStats(this.getRow());
+        DescriptiveStatistics stats = RnaData.getStats(this.getRow());
         this.mean = stats.getMean();
         this.sdev = stats.getStandardDeviation();
     }
