@@ -38,8 +38,8 @@ import org.theseed.utils.BaseProcessor;
  * the original experiment ID and the well containing the sample.  Finally, we compute the normalized production
  * (raw / optical density) and the growth rate (production / time).
  *
- * The positional parameters are the name of the master file and the name of a file to contain the choices
- * for the parts of the strain name.
+ * The positional parameters are the name of the master file, the name of a file to contain the choices
+ * for the parts of the strain name, and the name of the output file.
  *
  * The command-line options are as follows.
  *
@@ -94,6 +94,10 @@ public class ThrFixProcessor extends BaseProcessor {
     /** choices output file */
     @Argument(index = 1, metaVar = "choices.tbl", usage = "choices output file", required = true)
     private File choiceFile;
+
+    /** main output file */
+    @Argument(index = 2, metaVar = "output.tbl", usage = "production output file", required = true)
+    private File outFile;
 
     @Override
     protected void setDefaults() {
@@ -160,48 +164,51 @@ public class ThrFixProcessor extends BaseProcessor {
                         strain = line.get(strainCol);
                         oldStrain = strain;
                     }
-                    // Compute the IPTG flag.  Note an empty value simply keeps the old value.
-                    if (! line.isEmpty(iptgCol))
-                        iptgFlag = line.getFancyFlag(iptgCol);
-                    // Compute the time point.
-                    double time;
-                    if (line.isEmpty(timeCol))
-                        time = Double.NaN;
-                    else
-                        time = line.getDouble(timeCol);
-                    // If the time is 4.5, IPTG is always FALSE.  It is not added until 5 hours.
-                    boolean realIptg = iptgFlag && (time >= 5.0);
-                    // Convert the strain to a sample ID.
-                    SampleId sample = SampleId.translate(strain, time, realIptg, "M1");
-                    if (sample == null) {
-                        badStrainRows++;
-                        if (! badStrainNames.contains(strain)) {
-                            log.debug("Invalid input strain ID {}.", strain);
-                            badStrainNames.add(strain);
-                        }
-                    } else {
-                        // Update the choices.
-                        String[] strainData = sample.getBaseFragments();
-                        for (int i = 0; i < strainData.length; i++)
-                            this.choices.get(i).add(strainData[i]);
-                        for (String delete : sample.getDeletes())
-                            this.choices.get(SampleId.DELETE_COL).add(delete);
-                        // Get the production, density, experiment ID, and well ID.
-                        double prod = line.getDouble(prodCol);
-                        double dens = line.getDouble(densCol);
-                        // Determine if this row is good.  That determines which map it goes in.
-                        Map<SampleId, GrowthData> targetMap;
-                        if (line.getFancyFlag(errCol)) {
-                            targetMap = this.badGrowthMap;
-                            badSampleRows++;
+                    // Note we skip strains named "Blank".
+                    if (! StringUtils.startsWithIgnoreCase(strain, "Blank")) {
+                        // Compute the IPTG flag.  Note an empty value simply keeps the old value.
+                        if (! line.isEmpty(iptgCol))
+                            iptgFlag = line.getFancyFlag(iptgCol);
+                        // Compute the time point.
+                        double time;
+                        if (line.isEmpty(timeCol))
+                            time = Double.NaN;
+                        else
+                            time = line.getDouble(timeCol);
+                        // If the time is 4.5, IPTG is always FALSE.  It is not added until 5 hours.
+                        boolean realIptg = iptgFlag && (time >= 5.0);
+                        // Convert the strain to a sample ID.
+                        SampleId sample = SampleId.translate(strain, time, realIptg, "M1");
+                        if (sample == null) {
+                            badStrainRows++;
+                            if (! badStrainNames.contains(strain)) {
+                                log.debug("Invalid input strain ID {}.", strain);
+                                badStrainNames.add(strain);
+                            }
                         } else {
-                            targetMap = this.growthMap;
-                            keptRows++;
-                            if (prod == 0.0) zeroProdRows++;
+                            // Update the choices.
+                            String[] strainData = sample.getBaseFragments();
+                            for (int i = 0; i < strainData.length; i++)
+                                this.choices.get(i).add(strainData[i]);
+                            for (String delete : sample.getDeletes())
+                                this.choices.get(SampleId.DELETE_COL).add(delete);
+                            // Get the production, density, experiment ID, and well ID.
+                            double prod = line.getDouble(prodCol);
+                            double dens = line.getDouble(densCol);
+                            // Determine if this row is good.  That determines which map it goes in.
+                            Map<SampleId, GrowthData> targetMap;
+                            if (line.getFancyFlag(errCol)) {
+                                targetMap = this.badGrowthMap;
+                                badSampleRows++;
+                            } else {
+                                targetMap = this.growthMap;
+                                keptRows++;
+                                if (prod == 0.0) zeroProdRows++;
+                            }
+                            // Store this row in the sample map.
+                            GrowthData growth = targetMap.computeIfAbsent(sample, x -> new GrowthData(strain, time));
+                            growth.merge(prod, dens, line.get(expCol), line.get(wellCol));
                         }
-                        // Store this row in the sample map.
-                        GrowthData growth = targetMap.computeIfAbsent(sample, x -> new GrowthData(strain, time));
-                        growth.merge(prod, dens, line.get(expCol), line.get(wellCol));
                     }
                 }
             }
@@ -222,36 +229,38 @@ public class ThrFixProcessor extends BaseProcessor {
         log.info("{} good rows had no production.", zeroProdRows);
         // Now we need to organize the samples by strain and look for threshold anomalies.
         this.checkThresholds();
-        log.info("Producing output.");
-        System.out.println("num\told_strain\tsample\tthr_production\tgrowth\tbad\tthr_normalized\tthr_rate\torigins\traw_productions");
-        // Write the good data.
-        int num = 0;
-        int qCount = 0;
-        for (Map.Entry<SampleId, GrowthData> sampleEntry : this.growthMap.entrySet()) {
-            SampleId sampleId = sampleEntry.getKey();
-            GrowthData growth = sampleEntry.getValue();
-            num++;
-            double range = growth.getProductionRange();
-            String qFlag = "";
-            if (range > this.alertRange || growth.isSuspicious()) {
-                qFlag = "?";
-                qCount++;
-            }
-            writeSampleData(num, sampleId, growth, qFlag);
-        }
-        log.info("{} good samples output, {} were questionable.", num, qCount);
-        // Write the bad data if the user wants it.
-        if (! this.goodFlag) {
-            int oldNum = num;
-            for (Map.Entry<SampleId, GrowthData> sampleEntry : this.badGrowthMap.entrySet()) {
+        log.info("Producing output to {}.", this.outFile);
+        try (PrintWriter writer = new PrintWriter(this.outFile)) {
+            writer.println("num\told_strain\tsample\tthr_production\tgrowth\tbad\tthr_normalized\tthr_rate\torigins\traw_productions");
+            // Write the good data.
+            int num = 0;
+            int qCount = 0;
+            for (Map.Entry<SampleId, GrowthData> sampleEntry : this.growthMap.entrySet()) {
                 SampleId sampleId = sampleEntry.getKey();
-                if (this.growthMap.containsKey(sampleId)) {
-                    GrowthData growth = sampleEntry.getValue();
-                    num++;
-                    writeSampleData(num, sampleId, growth, "Y");
+                GrowthData growth = sampleEntry.getValue();
+                num++;
+                double range = growth.getProductionRange();
+                String qFlag = "";
+                if (range > this.alertRange || growth.isSuspicious()) {
+                    qFlag = "?";
+                    qCount++;
                 }
+                writeSampleData(writer, num, sampleId, growth, qFlag);
             }
-            log.info("{} bad samples output.", num - oldNum);
+            log.info("{} good samples output, {} were questionable.", num, qCount);
+            // Write the bad data if the user wants it.
+            if (! this.goodFlag) {
+                int oldNum = num;
+                for (Map.Entry<SampleId, GrowthData> sampleEntry : this.badGrowthMap.entrySet()) {
+                    SampleId sampleId = sampleEntry.getKey();
+                    if (this.growthMap.containsKey(sampleId)) {
+                        GrowthData growth = sampleEntry.getValue();
+                        num++;
+                        writeSampleData(writer, num, sampleId, growth, "Y");
+                    }
+                }
+                log.info("{} bad samples output.", num - oldNum);
+            }
         }
     }
 
@@ -286,13 +295,14 @@ public class ThrFixProcessor extends BaseProcessor {
     /**
      * Write out a line of sample data.
      *
+     * @param writer	output stream
      * @param num		number of this sample
      * @param sampleId	ID of this sample
      * @param growth	growth data
      * @param badFlag	"Y" if bad, "" if good, "?" if questionable
      */
-    private void writeSampleData(int num, SampleId sampleId, GrowthData growth, String badFlag) {
-        System.out.format("%d\t%s\t%s\t%1.9f\t%1.2f\t%s\t%1.9f\t%1.9f\t%s\t%s%n",
+    private void writeSampleData(PrintWriter writer, int num, SampleId sampleId, GrowthData growth, String badFlag) {
+        writer.format("%d\t%s\t%s\t%1.9f\t%1.2f\t%s\t%1.9f\t%1.9f\t%s\t%s%n",
                 num, growth.getOldStrain(), sampleId.toString(), growth.getProduction(), growth.getDensity(),
                 badFlag, growth.getNormalizedProduction(), growth.getProductionRate(), growth.getOrigins(),
                 growth.getProductionList());

@@ -14,6 +14,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.RegExUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
@@ -57,6 +58,8 @@ public class MultiExperimentGroup extends ExperimentGroup {
     private static final Pattern IPTG_LINE = Pattern.compile("IPTG\\s+(.+)");
     /** pattern for plate ID line */
     private static final Pattern PLATE_LINE = Pattern.compile("Layout for set (\\S+)\\.?");
+    /** pattern for non-ASCII characters */
+    private static final Pattern BAD_CHARS = Pattern.compile("[^\\x00-\\x7F]");
 
     /**
      * Construct the experiment group.
@@ -169,6 +172,13 @@ public class MultiExperimentGroup extends ExperimentGroup {
                 String rowString = rowStrings[r];
                 String rowLabel = LETTERS[r];
                 if (rowString != null) {
+                    // Turn the row string into a suffix.  "0" becomes a null string, and every thing else
+                    // gets a space prefixed.
+                    if (rowString.contentEquals("0"))
+                        rowString = "";
+                    else
+                        rowString = " " + rowString;
+                    // Loop through the columns.
                     for (int c = 0; c < colStrings.length; c++) {
                         String colString = colStrings[c];
                         String well = rowLabel + NUMBERS[c];
@@ -210,8 +220,10 @@ public class MultiExperimentGroup extends ExperimentGroup {
         String line = para.getText();
         // Convert deltas to Ds.  Note this is the Word version of a delta, not a normal unicode delta.
         line = StringUtils.replaceChars(line, '\uf044', 'D');
+        // Remove other unicode characters.
+        String line2 = RegExUtils.replaceAll(line, BAD_CHARS, " ");
         // Trim spaces.
-        String retVal = StringUtils.trimToEmpty(line);
+        String retVal = StringUtils.trimToEmpty(line2);
         return retVal;
     }
 

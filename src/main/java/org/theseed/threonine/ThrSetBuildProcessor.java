@@ -101,9 +101,9 @@ public class ThrSetBuildProcessor extends BaseProcessor {
                                 log.info("Skipping incomplete result {}.", result.getWell());
                                 skipCount++;
                             } else {
-                                String badFlag = "";
+                                String badFlag = "0";
                                 if (result.isSuspect()) {
-                                    badFlag = "Y";
+                                    badFlag = "1";
                                     badCount++;
                                 }
                                 writer.format("%s\t%s\t%4.1f\t%8.6f\t%8.6f\t%s\t%s\t%s%n",
