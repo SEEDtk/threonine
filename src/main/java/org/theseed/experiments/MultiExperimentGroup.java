@@ -174,8 +174,8 @@ public class MultiExperimentGroup extends ExperimentGroup {
                 if (rowString != null) {
                     // Turn the row string into a suffix.  "0" becomes a null string, and every thing else
                     // gets a space prefixed.
-                    if (rowString.contentEquals("0"))
-                        rowString = "";
+                    if (rowString.startsWith("0"))
+                        rowString = StringUtils.replaceOnce(rowString, "0", "");
                     else
                         rowString = " " + rowString;
                     // Loop through the columns.
