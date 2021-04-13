@@ -8,7 +8,11 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
@@ -46,6 +50,7 @@ import org.theseed.utils.ParseFailureException;
  * --max		maximum production; only production values strictly less than this will be output; the default is 5
  * --pure		skip questionable results
  * --prod		name of production column to use; the default is "thr_production"
+ * --limited	comma-delimited list of strains IDs to include (default is include all)
  *
  * @author Bruce Parrello
  *
@@ -57,6 +62,8 @@ public class ProdFormatProcessor extends BaseProcessor {
     protected static Logger log = LoggerFactory.getLogger(ProdFormatProcessor.class);
     /** input stream */
     private InputStream reader;
+    /** include set */
+    private Set<String> strainsToKeep;
 
     // COMMAND-LINE OPTIONS
 
@@ -96,6 +103,10 @@ public class ProdFormatProcessor extends BaseProcessor {
     @Option(name = "--prod", metaVar = "thr_rate", usage = "name of threonine production column from input file")
     private String prodName;
 
+    /** if specified, output will be limited to 277 and 926 strains */
+    @Option(name = "--limited", usage = "comma-delimited list of strain IDs to include (default includes all)")
+    private String limitStrains;
+
     /** output file */
     @Argument(index = 0, metaVar = "outFile.csv", usage = "output file")
     private File outFile;
@@ -111,6 +122,7 @@ public class ProdFormatProcessor extends BaseProcessor {
         this.maxBound = 5.0;
         this.pureFlag = false;
         this.prodName = "thr_production";
+        this.limitStrains = null;
     }
 
     @Override
@@ -131,6 +143,12 @@ public class ProdFormatProcessor extends BaseProcessor {
         if (this.minHours > this.maxHours)
             throw new ParseFailureException("Minimum time point cannot be greater than maximum time point.");
         log.info("Threonine production column name is {}.", this.prodName);
+        // Process the strains to keep.
+        this.strainsToKeep = null;
+        if (this.limitStrains != null) {
+            this.strainsToKeep = Arrays.stream(StringUtils.split(this.limitStrains, ',')).collect(Collectors.toSet());
+            log.info("Strains will be limited to: {}.", StringUtils.join(this.strainsToKeep, ", "));
+        }
         return true;
     }
 
@@ -152,6 +170,7 @@ public class ProdFormatProcessor extends BaseProcessor {
             int skipCount = 0;
             int boundCount = 0;
             int timeCount = 0;
+            int excludeCount = 0;
             // Loop through the input.
             for (TabbedLineReader.Line line : reader) {
                 String badFlag = line.get(badCol);
@@ -162,22 +181,27 @@ public class ProdFormatProcessor extends BaseProcessor {
                 else {
                     String sampleId = line.get(sampleCol);
                     SampleId sample = new SampleId(sampleId);
-                    double production = line.getDouble(prodCol);
-                    double density = line.getDouble(growthCol);
-                    // Check for the bounds and the 24-hour filter.
-                    if (production <= this.minBound || production >= this.maxBound)
-                        boundCount++;
-                    else if (! this.checkTime(sample))
-                        timeCount++;
+                    // Check for strain limitations.
+                    if (this.strainsToKeep != null && ! this.strainsToKeep.contains(sample.getFragment(0)))
+                        excludeCount++;
                     else {
-                        // Here we have a good sample.
-                        writer.writeSample(sample, production, density);
-                        count++;
+                        double production = line.getDouble(prodCol);
+                        double density = line.getDouble(growthCol);
+                        // Check for the bounds and the 24-hour filter.
+                        if (production <= this.minBound || production >= this.maxBound)
+                            boundCount++;
+                        else if (! this.checkTime(sample))
+                            timeCount++;
+                        else {
+                            // Here we have a good sample.
+                            writer.writeSample(sample, production, density);
+                            count++;
+                        }
                     }
                 }
             }
-            log.info("{} samples written, {} questionable samples skipped, {} bad samples skipped, {} outside the production bounds, {} were filtered by time point.",
-                    count, skipCount, badCount, boundCount, timeCount);
+            log.info("{} samples written, {} questionable samples skipped, {} bad samples skipped, {} outside the production bounds, {} were filtered by time point, {} excluded.",
+                    count, skipCount, badCount, boundCount, timeCount, excludeCount);
         }
     }
 
