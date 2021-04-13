@@ -1,15 +1,11 @@
 /**
  *
  */
-package org.theseed.threonine;
+package org.theseed.experiments;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedMap;
@@ -20,7 +16,6 @@ import java.util.regex.Pattern;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.theseed.io.LineReader;
 
 /**
  * This class describes an experiment.  The experiment starts on a 96-well plate that is measured for growth at
@@ -42,16 +37,10 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
     private Map<String, String> strainMap;
     /** map from experiment keys to results */
     private SortedMap<Key, Result> resultMap;
-    /** file boundary marker */
-    private static final String MARKER_LINE = "//";
     /** minimum-growth limit */
     private static double MIN_GROWTH = 0.001;
     /** key specification string parser */
     private static final Pattern KEY_PATTERN = Pattern.compile("\\s*([0-9.]+)h\\s+([A-Z]\\d+)\\s*");
-    /** growth file name string parser */
-    private static final Pattern GROWTH_FILE_PATTERN =
-            Pattern.compile("set \\S+ ([0-9.]+) hrs \\d+\\.csv");
-
     /**
      * This nested class contains the key for an experiment result-- the well ID from the 96-well plate
      * and the time point.
@@ -67,7 +56,7 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
          * @param well			small-plate well identifier
          * @param timePoint		time point of observation
          */
-        private Key(String well, double timePoint) {
+        public Key(String well, double timePoint) {
             this.well = well;
             this.timePoint = timePoint;
         }
@@ -155,6 +144,7 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
         private boolean iptgFlag;
         private double growth;
         private double production;
+        private boolean suspect;
 
         /**
          * Create a result object for a specified well and time point.
@@ -163,17 +153,45 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
          * @param timePoint		time point of the measurement
          */
         private Result(String well, double timePoint) {
-            this.id = new Key(well, timePoint);
+            // Get the strain string.
             String strainString = ExperimentData.this.getStrain(well);
+            boolean iptgFlag = strainString.contains("+IPTG");
+            if (iptgFlag)
+                strainString = StringUtils.remove(strainString, " +IPTG");
+            // Initialize the result.
+            setup(well, timePoint, strainString, iptgFlag);
+        }
+
+        /**
+         * Create a result object where the strain is known.
+         *
+         * @param strainString	old-style strain name
+         * @param well			well ID
+         * @param timePoint		appropriate time point
+         * @param iptg			TRUE if iptg is present, else FALSE
+         */
+        private Result(String strainString, String well, double timePoint, boolean iptg) {
+            setup(well, timePoint, strainString, iptg);
+        }
+
+        /**
+         * Initialize this result object.
+         *
+         * @param well			well ID
+         * @param timePoint		appropriate time point
+         * @param strainString	old-style strain name
+         * @param iptg			TRUE if iptg is present, else FALSE
+         */
+        public void setup(String well, double timePoint, String strainString, boolean iptg) {
+            this.strain = strainString;
+            // Form the key.
+            this.id = new Key(well, timePoint);
             // Determine whether or not IPTG is active.
-            this.iptgFlag = strainString.contains("+IPTG");
-            if (this.iptgFlag)
-                this.strain = StringUtils.remove(strainString, " +IPTG");
-            else
-                this.strain = strainString;
+            this.iptgFlag = iptg;
             // Denote we have no growth or production yet.
             this.growth = Double.NaN;
             this.production = Double.NaN;
+            this.suspect = false;
         }
 
         /**
@@ -250,27 +268,22 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
             return ! Double.isNaN(this.growth) && ! Double.isNaN(this.production);
         }
 
-    }
-
-    /**
-     * Create a map from time points to growth files.
-     *
-     * @param inDir		experiment directory
-     *
-     * @return a map for all the growth files in an experiment directory
-     */
-    public static Map<Double, File> getGrowthFiles(File inDir) {
-        String[] files = inDir.list();
-        Map<Double, File> retVal = new TreeMap<Double, File>();
-        for (String fileName : files) {
-            // Verify this is a file we want.
-            Matcher m = GROWTH_FILE_PATTERN.matcher(fileName);
-            if (m.matches()) {
-                double timePoint = Double.valueOf(m.group(1));
-                retVal.put(timePoint, new File(inDir, fileName));
-            }
+        /**
+         * @return TRUE if this result is probably bad
+         */
+        public boolean isSuspect() {
+            return this.suspect;
         }
-        return retVal;
+
+        /**
+         * Specify whether or not this result is bad
+         *
+         * @param suspect 	TRUE if the result is bad, else FALSE
+         */
+        public void setSuspect(boolean suspect) {
+            this.suspect = suspect;
+        }
+
     }
 
     /**
@@ -281,42 +294,7 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
     public ExperimentData(String id) {
         this.id = id;
         this.resultMap = new TreeMap<Key, Result>();
-    }
-
-    /**
-     * Read the key file to associate each well with a strain string.
-     *
-     * @param keyFile	name of the key field
-     *
-     * @throws IOException
-     */
-    public void readKeyFile(File keyFile) throws IOException {
         this.strainMap = new HashMap<String, String>(100);
-        try (LineReader inFile = new LineReader(keyFile)) {
-            log.info("Reading layout for experiment {}.", this.id);
-            // Read the column section.
-            Map<String, String> colMap = new HashMap<String, String>(20);
-            for (String[] line : inFile.new Section(MARKER_LINE)) {
-                if (hasStrain(line))
-                    colMap.put(line[0], line[1]);
-            }
-            log.info("{} columns read for experiment {}.", colMap.size(), this.id);
-            // Read the row section.
-            for (String[] line : inFile.new Section(MARKER_LINE)) {
-                if (hasStrain(line)) {
-                    for (Map.Entry<String, String> entry : colMap.entrySet())
-                        this.strainMap.put(line[0] + entry.getKey(), entry.getValue() + " " + line[1]);
-                }
-            }
-            // Read the override section.  Note a blank here demands that the well be deleted.
-            for (String[] line : inFile.new Section(null)) {
-                if (hasStrain(line))
-                    this.strainMap.put(line[0], line[1]);
-                else
-                    this.strainMap.remove(line[0]);
-            }
-            log.info("{} wells defined for experiment {}.", this.strainMap.size(), this.id);
-        }
     }
 
     /**
@@ -329,59 +307,18 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
     }
 
     /**
-     * Read a growth file.  The growth is put into result objects in the result map
-     * and then corrected against the blank well in column 12.  The growth file is
-     * a comma-delimited file, and the key columns are the first and third.
+     * Store a result in this structure.  The specs of the result are specified, but not the growth or
+     * production data.
      *
-     * @param growthFile	growth file to read
-     * @param timePoint		time point for the file
-     *
-     * @throws IOException
+     * @param strainString	old-style strain name
+     * @param well			well ID
+     * @param timePoint		appropriate time point
+     * @param iptg			TRUE if iptg is present, else FALSE
      */
-    public void readGrowthFile(File growthFile, double timePoint) throws IOException {
-        log.info("Reading growth file {} for time point {} in experiment {}.",
-                growthFile, timePoint, this.id);
-        // This map contains the result list for each row.
-        Map<String, List<Result>> rowLists = new TreeMap<String, List<Result>>();
-        // This map contains the blank growth for each row.
-        Map<String, Double> rowBase = new TreeMap<String, Double>();
-        // Loop through the file.
-        try (LineReader reader = new LineReader(growthFile)) {
-            Iterator<String[]> iter = reader.new SectionIter(null, ",");
-            // Skip the header line.
-            iter.next();
-            // Note the growth is scaled by 10.
-            while (iter.hasNext()) {
-                String[] line = iter.next();
-                String well = line[0];
-                String rowChar = line[0].substring(0, 1);
-                double growth = Double.valueOf(line[2]) * 10.0;
-                if (well.endsWith("12")) {
-                    // Here we have a row base, so we save it for normalization.
-                    rowBase.put(rowChar, growth);
-                } else if (this.strainMap.containsKey(well)) {
-                    // Here we have a valid strain in the well.  Create the result.
-                    Result result = new Result(well, timePoint);
-                    // Store it in the row list.
-                    List<Result> rowList = rowLists.computeIfAbsent(rowChar, x -> new ArrayList<Result>(12));
-                    rowList.add(result);
-                    // Set the growth.
-                    result.setGrowth(growth);
-                }
-            }
-            // Now we need to normalize each row by subtracting the blank and bottoming at zero.
-            // The normalized result is stored in the result map.
-            for (Map.Entry<String, List<Result>> rowEntry : rowLists.entrySet()) {
-                String rowChar = rowEntry.getKey();
-                double baseGrowth = rowBase.get(rowChar);
-                for (Result result : rowEntry.getValue()) {
-                    double newGrowth = result.getGrowth() - baseGrowth;
-                    if (newGrowth < 0.0) newGrowth = 0.0;
-                    result.setGrowth(newGrowth);
-                    this.resultMap.put(result.getId(), result);
-                }
-            }
-        }
+    public void store(String strainString, String well, double timePoint, boolean iptg) {
+        Result result = this.new Result(strainString, well, timePoint, iptg);
+        this.strainMap.put(well, strainString + (iptg ? " +IPTG" : ""));
+        this.resultMap.put(new Key(well, timePoint), result);
     }
 
     /**
@@ -422,72 +359,6 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
     public Result getResult(String well, double timePoint) {
         Key key = new Key(well, timePoint);
         return this.getResult(key);
-    }
-
-    /**
-     * Read the production file and store production information in the current results.
-     * The production file contains two sections.  The first describes what is in each big-platee
-     * well.  The second contains the production value in mg/L.  We must conert it to g/L.
-     *
-     * @param prodFile	name of the production file to process
-     *
-     * @throws IOException
-     */
-    public void readProdFile(File prodFile) throws IOException {
-        try (LineReader reader = new LineReader(prodFile)) {
-            // We will process both sections in the same order-- left to right,
-            // one line at a time.  The keys will be stored in this list, and
-            // then read it back when we are parsing the production numbers.
-            List<Key> keys = new ArrayList<Key>(400);
-            // Loop through the first section.
-            Iterator<String[]> iter = reader.new SectionIter(MARKER_LINE, "\t");
-            // The first line is a header.
-            iter.next();
-            // Loop through the data lines.
-            while (iter.hasNext()) {
-                String[] keyStrings = iter.next();
-                // We start at position 1, since position 0 is a label.
-                for (int i = 1; i < keyStrings.length; i++) {
-                    Key key = Key.create(keyStrings[i]);
-                    keys.add(key);
-                }
-            }
-            log.info("{} result keys found in {}.", keys.size(), prodFile);
-            // Now we read the second section, containing the growths.
-            iter = reader.new SectionIter(MARKER_LINE, "\t");
-            iter.next();
-            // This tracks our position in the key list.
-            Iterator<Key> kIter = keys.iterator();
-            // This counts the number of results stored.
-            int stored = 0;
-            // Loop through the data lines.
-            while (iter.hasNext()) {
-                String[] prodStrings = iter.next();
-                for (int i = 1; i < prodStrings.length; i++) {
-                    Result result = this.resultMap.get(kIter.next());
-                    if (result != null) {
-                        // Here we have a result we want.
-                        double prod = Double.valueOf(prodStrings[i]) / 1000.0;
-                        result.setProduction(prod);
-                        stored++;
-                    }
-                }
-            }
-            log.info("{} growth numbers stored for experiment {}.", stored, this.id);
-            // Remove incomplete results.
-            this.resultMap.entrySet().removeIf(x -> ! x.getValue().isComplete());
-            log.info("{} complete results found for experiment {}.",
-                    this.resultMap.size(), this.id);
-        }
-    }
-
-    /**
-     * @return TRUE if the current layout file line has a strain string in it
-     *
-     * @param line	array of two strings, a label and a possible strain string
-     */
-    private static boolean hasStrain(String[] line) {
-        return line.length > 1 && ! line[1].isEmpty() && ! line[1].contentEquals("Blank");
     }
 
     /**

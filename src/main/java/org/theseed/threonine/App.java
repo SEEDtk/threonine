@@ -39,9 +39,6 @@ public class App
         case "thrall" :
             processor = new ThrallProcessor();
             break;
-        case "thrBuild" :
-            processor = new ThrBuildProcessor();
-            break;
         case "rnaSeqComp" :
             processor = new RnaSeqCompareProcessor();
             break;
@@ -53,6 +50,9 @@ public class App
             break;
         case "rnaSeqCorr" :
             processor = new RnaSeqCorrespondenceProcessor();
+            break;
+        case "thrBuild" :
+            processor = new ThrSetBuildProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
