@@ -4,7 +4,10 @@
 package org.theseed.reports;
 
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * This is the base class for computing the mean of a list of observations.  Each subclass supports a different algorithm for
@@ -38,11 +41,26 @@ public abstract class MeanComputer {
     /**
      * Compute an error-corrected mean for a set of numbers.
      *
-     * @param nums		list of input numbers
+     * @param nums			list of input numbers
+     * @param goodLevels	bitmap of good values in the input numbers
      *
      * @return the bias-corrected mean
      */
-    public abstract double goodMean(List<Double> nums);
+    public abstract double goodMean(List<Double> nums, BitSet goodLevels);
+
+    /**
+     * @return a list of the good values in the specified list
+     *
+     * @param nums			list of input numbers
+     * @param goodLevels	bitmap of good values in the input numbers, or NULL if all are good
+     */
+    public static List<Double> getGood(List<Double> nums, BitSet goodLevels) {
+        List<Double> retVal = nums;
+        if (goodLevels != null)
+            retVal = IntStream.range(0, nums.size()).filter(i -> goodLevels.get(i))
+                    .mapToObj(i -> nums.get(i)).collect(Collectors.toList());
+        return retVal;
+    }
 
     /**
      * This class computes the trimean, that is, the weighted average of the median and the upper
@@ -51,13 +69,14 @@ public abstract class MeanComputer {
     public static class Trimean extends MeanComputer {
 
         @Override
-        public double goodMean(List<Double> nums) {
+        public double goodMean(List<Double> nums, BitSet goodLevels) {
             double retVal = 0.0;
+            nums = getGood(nums, goodLevels);
             if (nums.size() == 1)
                 retVal = nums.get(0);
             else if (nums.size() == 2)
                 retVal = (nums.get(0) + nums.get(1)) / 2.0;
-            else {
+            else if (nums.size() > 2) {
                 double[] sorted = nums.stream().mapToDouble(x -> x).sorted().toArray();
                 // Sort the array.  The most extreme negative error will be first and the most extreme positive
                 // error will be last.
@@ -65,6 +84,8 @@ public abstract class MeanComputer {
                 // Get the midpoint index rounded up and rounded down.
                 int floor = (sorted.length - 1) >> 1;
                 int ceil = sorted.length >> 1;
+                if (floor < 0 || ceil < 0)
+                    System.err.println("Error case.");
                 // Average the values to get the median.
                 double q2 = (sorted[floor] + sorted[ceil]) / 2.0;
                 // Get the quartile index rounded up and rounded down.
@@ -94,8 +115,9 @@ public abstract class MeanComputer {
     public static class Middle extends MeanComputer {
 
         @Override
-        public double goodMean(List<Double> nums) {
+        public double goodMean(List<Double> nums, BitSet goodLevels) {
             double retVal = 0.0;
+            nums = getGood(nums, goodLevels);
             if (nums.size() == 1)
                 retVal = nums.get(0);
             else if (nums.size() == 2)
@@ -149,8 +171,9 @@ public abstract class MeanComputer {
          * @return the bias-corrected mean
          */
         @Override
-        public double goodMean(List<Double> nums) {
+        public double goodMean(List<Double> nums, BitSet goodLevels) {
             double retVal = 0.0;
+            nums = getGood(nums, goodLevels);
             if (nums.size() == 1)
                 retVal = nums.get(0);
             else if (nums.size() > 1) {

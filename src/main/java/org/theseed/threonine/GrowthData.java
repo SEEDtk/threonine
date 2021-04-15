@@ -4,7 +4,7 @@
 package org.theseed.threonine;
 
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.BitSet;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -26,6 +26,8 @@ public class GrowthData implements Comparable<GrowthData> {
     private String oldStrain;
     /** threonine production amounts in grams/liter */
     private List<Double> production;
+    /** for each index value, TRUE if the production level is good */
+    private BitSet goodLevels;
     /** saved production value */
     private double productionKey;
     /** optical densities */
@@ -38,6 +40,8 @@ public class GrowthData implements Comparable<GrowthData> {
     private boolean suspicious;
     /** algorithm for computing the mean */
     public static MeanComputer MEAN_COMPUTER = new MeanComputer.Sigma(2);
+    /** minimum acceptable density */
+    public static double MIN_DENSITY = 0.001;
 
     /**
      * Create a blank growth-data object.
@@ -50,6 +54,7 @@ public class GrowthData implements Comparable<GrowthData> {
         this.production = new ArrayList<Double>();
         this.density = new ArrayList<Double>();
         this.origins = new ArrayList<String>();
+        this.goodLevels = new BitSet();
         this.timePoint = time;
         this.suspicious = false;
         this.productionKey = Double.NaN;
@@ -64,6 +69,10 @@ public class GrowthData implements Comparable<GrowthData> {
      * @param well	well ID
      */
     public void merge(double prod, double dens, String exp, String well) {
+        // The new value is good if the density is good enough.
+        boolean goodValue = (dens >= MIN_DENSITY);
+        this.goodLevels.set(this.production.size(), goodValue);
+        // Now add the other values.
         this.production.add(prod);
         this.density.add(dens);
         this.origins.add(exp + ":" + well);
@@ -76,7 +85,7 @@ public class GrowthData implements Comparable<GrowthData> {
      */
     public double getProduction() {
         if (Double.isNaN(this.productionKey))
-            this.productionKey = MEAN_COMPUTER.goodMean(this.production);
+            this.productionKey = MEAN_COMPUTER.goodMean(this.production, this.goodLevels);
         return this.productionKey;
     }
 
@@ -84,7 +93,7 @@ public class GrowthData implements Comparable<GrowthData> {
      * @return the optical density
      */
     public double getDensity() {
-        return MEAN_COMPUTER.goodMean(this.density);
+        return MEAN_COMPUTER.goodMean(this.density, this.goodLevels);
     }
 
     /**
@@ -95,15 +104,50 @@ public class GrowthData implements Comparable<GrowthData> {
     }
 
     /**
+     * Flag a zero-production value as bad if all the others are higher than the threshold.
+     *
+     * @param	threshold	threshold to check
+     */
+    public void removeBadZeroes(double threshold) {
+        // This will hold the minimum non-zero value.
+        double min = Double.POSITIVE_INFINITY;
+        // This will count the zero values.
+        int xCount = 0;
+        int zCount = 0;
+        int zIndex = 0;
+        // Get the minimum non-zero value.
+        for (int i = 0; i < this.production.size(); i++) {
+            double val = this.production.get(i);
+            if (this.density.get(i) > MIN_DENSITY) {
+                if (val > 0.0) {
+                    min = val;
+                    xCount++;
+                }  else {
+                    zCount++;
+                    zIndex = i;
+                }
+            }
+        }
+        if (xCount > 0 && min > threshold && zCount == 1) {
+            // Here we want to ignore the zero production value.  It's likely a bad result.
+            this.goodLevels.clear(zIndex);
+        }
+        // If we have no good values, mark this suspicious.
+        boolean allBad = IntStream.range(0, this.production.size()).noneMatch(i -> this.goodLevels.get(i));
+        if (allBad)
+            this.suspicious = true;
+    }
+
+    /**
      * @return the normalized production
      */
     public double getNormalizedProduction() {
         List<Double> norms = IntStream.range(0, this.production.size())
-                .filter(i -> this.density.get(i) > 0).mapToObj(i -> this.production.get(i) / this.density.get(i))
+                .filter(i -> this.goodLevels.get(i)).mapToObj(i -> this.production.get(i) / this.density.get(i))
                 .collect(Collectors.toList());
         double retVal = 0.0;
         if (norms.size() > 0)
-            retVal = MEAN_COMPUTER.goodMean(norms);
+            retVal = MEAN_COMPUTER.goodMean(norms, this.goodLevels);
         return retVal;
     }
 
@@ -113,7 +157,7 @@ public class GrowthData implements Comparable<GrowthData> {
      * @param time	number of hours of growth
      */
     public double getProductionRate() {
-        return MEAN_COMPUTER.goodMean(this.production) / this.timePoint;
+        return MEAN_COMPUTER.goodMean(this.production, this.goodLevels) / this.timePoint;
     }
 
     /**
@@ -135,15 +179,18 @@ public class GrowthData implements Comparable<GrowthData> {
      * @return the range of production values
      */
     public double getProductionRange() {
-        Iterator<Double> iter = this.production.iterator();
-        double min = iter.next();
-        double max = min;
-        while (iter.hasNext()) {
-            double val = iter.next();
-            if (val > max) max = val;
-            if (val < min) min = val;
+        double min = Double.POSITIVE_INFINITY;
+        double max = Double.NEGATIVE_INFINITY;
+        for (int i = 0; i < this.production.size(); i++) {
+            if (this.goodLevels.get(i)) {
+                double val = this.production.get(i);
+                if (val > max) max = val;
+                if (val < min) min = val;
+            }
         }
-        return (max - min);
+        double retVal = 0.0;
+        if (min < max) retVal = max - min;
+        return retVal;
     }
 
     /**

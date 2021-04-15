@@ -49,7 +49,7 @@ import org.theseed.utils.BaseProcessor;
  * --mean		type of mean to use (MIDDLE, SIGMA2, SIGMA1, TRIMEAN)
  * --good		only output good samples
  * --alert		specifies a range; production values with a higher spread in values than
- * 				the specified range are flagged as questionable (the default is 0.3)
+ * 				the specified range are flagged as questionable (the default is 1.0)
  * --trigger	specifies a threshold; if a time point is greater than all the other time
  * 				points (two or more) by the threshold, then the production value is flagged
  * 				as questionable
@@ -235,19 +235,28 @@ public class ThrFixProcessor extends BaseProcessor {
             // Write the good data.
             int num = 0;
             int qCount = 0;
+            int aCount = 0;
+            int gCount = 0;
             for (Map.Entry<SampleId, GrowthData> sampleEntry : this.growthMap.entrySet()) {
                 SampleId sampleId = sampleEntry.getKey();
                 GrowthData growth = sampleEntry.getValue();
                 num++;
+                // Fix any zero outliers.
+                growth.removeBadZeroes(this.alertRange);
+                // Check the alert range.
                 double range = growth.getProductionRange();
                 String qFlag = "";
-                if (range > this.alertRange || growth.isSuspicious()) {
+                if (range > this.alertRange) {
+                    qFlag = "?";
+                    aCount++;
+                } else if (growth.isSuspicious()) {
                     qFlag = "?";
                     qCount++;
-                }
+                } else
+                    gCount++;
                 writeSampleData(writer, num, sampleId, growth, qFlag);
             }
-            log.info("{} good samples output, {} were questionable.", num, qCount);
+            log.info("{} good samples output, {} failed the alert check, {} were questionable.", gCount, aCount, qCount);
             // Write the bad data if the user wants it.
             if (! this.goodFlag) {
                 int oldNum = num;
