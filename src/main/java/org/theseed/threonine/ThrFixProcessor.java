@@ -102,7 +102,7 @@ public class ThrFixProcessor extends BaseProcessor {
     @Override
     protected void setDefaults() {
         this.goodFlag = false;
-        this.alertRange = 0.3;
+        this.alertRange = 1.0;
         this.meanType = MeanComputer.Type.TRIMEAN;
         this.triggerThreshold = 1.2;
     }
