@@ -24,6 +24,7 @@ import org.theseed.io.LineReader;
 import org.theseed.reports.ThrSampleFormatter;
 import org.theseed.samples.SampleId;
 import org.theseed.utils.BaseProcessor;
+import org.theseed.utils.ParseFailureException;
 
 /**
  * This program reads the choices.tbl file produced by the "thrfix" command and produces
@@ -38,12 +39,14 @@ import org.theseed.utils.BaseProcessor;
  * -h 	display command-line usage
  * -v	display more frequent log messages
  *
- * --delim 	type of delimiter to use (COMMA or TAB)
+ * --delim 		type of delimiter to use (COMMA or TAB)
+ * --filter		type of filter to apply
+ * --maxD		for filter type LOW_COST, the maximum number of deletes
  *
  * @author Bruce Parrello
  *
  */
-public class ThrallProcessor extends BaseProcessor {
+public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParms {
 
     // FIELDS
     /** logging facility */
@@ -56,6 +59,8 @@ public class ThrallProcessor extends BaseProcessor {
     private String delim;
     /** flags indicating which sample fragments to keep */
     private boolean[] keep;
+    /** filter to apply */
+    private SampleFilter filter;
 
     /**
      * Enumerator for delimiters
@@ -80,6 +85,14 @@ public class ThrallProcessor extends BaseProcessor {
     @Option(name = "--delim", usage = "delimiter for output")
     private Delim delimiter;
 
+    /** type of filter to apply */
+    @Option(name = "--filter", usage = "sample filtering rule")
+    private SampleFilter.Type filterType;
+
+    /** maximum number of deletes for certain filter types */
+    @Option(name = "--maxD", metaVar = "2", usage = "maximum number of deletes (if filtered)")
+    private int maxDeletes;
+
     /** model directory */
     @Argument(index = 0, metaVar = "modelDir", usage = "directory containing the target model", required = true)
     private File modelDir;
@@ -95,10 +108,12 @@ public class ThrallProcessor extends BaseProcessor {
     @Override
     protected void setDefaults() {
         this.delimiter = Delim.TAB;
+        this.filterType = SampleFilter.Type.NONE;
+        this.maxDeletes = 3;
     }
 
     @Override
-    protected boolean validateParms() throws IOException {
+    protected boolean validateParms() throws IOException, ParseFailureException {
         // Verify the input file.
         if (! this.choiceFile.canRead())
             throw new FileNotFoundException("Choices file " + this.choiceFile + " is not found or unreadable.");
@@ -112,6 +127,11 @@ public class ThrallProcessor extends BaseProcessor {
             // Determine the names of the headers we need.
             this.trainingHeaders = new TreeSet<String>(Arrays.asList(StringUtils.split(headers, '\t')));
         }
+        // Verify the max deletes.
+        if (this.maxDeletes < 0)
+            throw new ParseFailureException("Delete limit cannot be negative.");
+        // Create the filter.
+        this.filter = this.filterType.create(this);
         return true;
     }
 
@@ -139,18 +159,21 @@ public class ThrallProcessor extends BaseProcessor {
             Iterator<String> iter = this.formatter.new SampleIterator();
             while (iter.hasNext()) {
                 String sampleId = iter.next();
-                // Check the insert and delete possibilities to make sure they are supported.
                 SampleId sample = new SampleId(sampleId);
-                String insert = sample.getFragment(SampleId.INSERT_COL);
-                Set<String> deletes = sample.getDeletes().stream().map(x -> "D" + x).collect(Collectors.toSet());
-                if ((insert.contentEquals("000") || trainingHeaders.contains(insert)) && trainingHeaders.containsAll(deletes)) {
-                    double[] parms = this.formatter.parseSample(sample);
-                    String parmString = IntStream.range(0, parms.length).filter(i -> this.keep[i]).mapToObj(i -> Double.toString(parms[i]))
-                            .collect(Collectors.joining(this.delim));
-                    writer.println(sampleId + this.delim + parmString);
-                    processed++;
-                    if (log.isInfoEnabled() && processed % 5000 == 0)
-                        log.info("{} samples processed.", processed);
+                // Apply the filter.
+                if (this.filter.acceptable(sample)) {
+                    // Check the insert and delete possibilities to make sure they are supported.
+                    String insert = sample.getFragment(SampleId.INSERT_COL);
+                    Set<String> deletes = sample.getDeletes().stream().map(x -> "D" + x).collect(Collectors.toSet());
+                    if ((insert.contentEquals("000") || trainingHeaders.contains(insert)) && trainingHeaders.containsAll(deletes)) {
+                        double[] parms = this.formatter.parseSample(sample);
+                        String parmString = IntStream.range(0, parms.length).filter(i -> this.keep[i]).mapToObj(i -> Double.toString(parms[i]))
+                                .collect(Collectors.joining(this.delim));
+                        writer.println(sampleId + this.delim + parmString);
+                        processed++;
+                        if (log.isInfoEnabled() && processed % 5000 == 0)
+                            log.info("{} samples processed.", processed);
+                    }
                 }
             }
             log.info("Processing complete. {} rows generated.", processed);
@@ -165,6 +188,11 @@ public class ThrallProcessor extends BaseProcessor {
     private List<String> keepers(String[] titles) {
         List<String> retVal = IntStream.range(0, titles.length).filter(i -> this.keep[i]).mapToObj(i -> titles[i]).collect(Collectors.toList());
         return retVal;
+    }
+
+    @Override
+    public int getMaxDeletes() {
+        return this.maxDeletes;
     }
 
 }

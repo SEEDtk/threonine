@@ -300,7 +300,10 @@ public class ThrSampleFormatter {
             boolean retVal = true;
             if (this.computeFragment(0).contentEquals("7") && this.computeFragment(3).contentEquals("0"))
                 retVal = false;
-            else if (this.computeFragment(2).startsWith("Tasd") && this.computeFragment(3).contentEquals("asdO"))
+            else if (this.computeFragment(2).startsWith("Tasd") && ! this.computeFragment(3).contentEquals("asdD"))
+                retVal = false;
+            else if (this.computeFragment(1).contentEquals("D") && (this.computeFragment(3).startsWith("TA") ||
+                    this.computeFragment(3).contentEquals("T")))
                 retVal = false;
             else if (this.computeFragment(1).contentEquals("0") && ! this.computeFragment(2).contentEquals("0"))
                 retVal = false;
