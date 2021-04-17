@@ -14,6 +14,7 @@ import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.apache.commons.math3.util.ResizableDoubleArray;
 import org.kohsuke.args4j.Option;
 import org.theseed.rna.RnaData;
+import org.theseed.rna.RnaJobInfo;
 import org.theseed.utils.ParseFailureException;
 
 /**
@@ -90,7 +91,7 @@ public class RnaSeqCorrespondenceProcessor extends RnaSeqBaseProcessor {
                     }
                 }
                 // Verify that we have enough values.
-                String fidName = this.computeGeneId(row);
+                String fidName = computeGeneId(row);
                 if (fidArray.getN() <= minElements)
                     log.warn("Too few points for a valid correlation on {}.", fidName);
                 else {

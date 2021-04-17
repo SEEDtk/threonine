@@ -111,7 +111,7 @@ public abstract class RnaSeqBaseProcessor extends BaseProcessor {
      *
      * @param row	row of interest
      */
-    public String computeGeneId(RnaData.Row row) {
+    public static String computeGeneId(RnaData.Row row) {
         String fid = row.getFeat().getId();
         String gene = row.getFeat().getGene();
         String suffix = StringUtils.substringAfter(fid, ".peg");
