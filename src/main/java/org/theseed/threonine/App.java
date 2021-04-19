@@ -15,6 +15,7 @@ import org.theseed.utils.BaseProcessor;
  * rnaSeqRep	compare RNA seq expression data for two samples
  * rnaSeqClass	produce a random forest training set from the rna seq database
  * rnaSeqCorr	compute the correlation between threonine production and RNA expression data for each feature
+ * seqImpact	produce the RNA seq impact report
  *
  */
 public class App
@@ -53,6 +54,9 @@ public class App
             break;
         case "thrBuild" :
             processor = new ThrSetBuildProcessor();
+            break;
+        case "seqImpact" :
+            processor = new RnaSeqImpactProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
