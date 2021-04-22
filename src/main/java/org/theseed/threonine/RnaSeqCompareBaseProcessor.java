@@ -13,6 +13,7 @@ import org.theseed.counters.Rating;
 import org.theseed.counters.RatingList;
 import org.theseed.rna.RnaData;
 import org.theseed.rna.RnaData.Row;
+import org.theseed.rna.RnaFeatureData;
 
 /**
  * This is a base class for RNA Seq expression data comparison.  It contains the key parameter, plus the
@@ -55,7 +56,7 @@ public abstract class RnaSeqCompareBaseProcessor extends RnaSeqBaseProcessor {
         }
         // For each feature, we compute the spread between the highest and lowest values.  The biggest spreads
         // will be stored in this list
-        RatingList<RnaData.FeatureData> outliers = new RatingList<>(this.numOutliers);
+        RatingList<RnaFeatureData> outliers = new RatingList<>(this.numOutliers);
         // The key statistics will be stored in this object.
         SummaryStatistics retVal = new SummaryStatistics();
         log.info("Processing RNA data rows.");
@@ -80,8 +81,8 @@ public abstract class RnaSeqCompareBaseProcessor extends RnaSeqBaseProcessor {
         String dashes = StringUtils.repeat('-', header.length());
         writer.format("     %s%n", header);
         writer.format("     %s%n", dashes);
-        for (Rating<RnaData.FeatureData> rating : outliers) {
-            RnaData.FeatureData feat = rating.getKey();
+        for (Rating<RnaFeatureData> rating : outliers) {
+            RnaFeatureData feat = rating.getKey();
             writer.format("     %-30s %-8s %14.2f%n", feat.getId(), feat.getGene(), rating.getRating());
         }
         return retVal;
