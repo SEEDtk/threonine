@@ -157,6 +157,8 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
 
     @Override
     protected void closeReport() {
+        // Suppress the derived columns.
+        this.suppressDerived(this.keepCol);
         // Write the header line.
         this.stringBuffer.clear().append("sample_id");
         String[] titles = this.getTitles();

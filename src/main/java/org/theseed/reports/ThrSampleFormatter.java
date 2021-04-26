@@ -10,7 +10,8 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
-
+import java.util.Set;
+import java.util.TreeSet;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.TextStringBuilder;
@@ -43,6 +44,8 @@ public class ThrSampleFormatter {
     private static final String[] TIME_POINTS = new String[] { "24" };
     /** choices for medium */
     private static final String[] MEDIA = new String[] { "M1" };
+    /** list of derived fragments */
+    private static final Set<Integer> DERIVED_PARTS = new TreeSet<Integer>(Arrays.asList(1, 3));
 
     /**
      * @return the choices present in a line from the choice file
@@ -300,27 +303,24 @@ public class ThrSampleFormatter {
             boolean retVal = true;
             if (this.computeFragment(0).contentEquals("7") && this.computeFragment(3).contentEquals("0"))
                 retVal = false;
-            else if (this.computeFragment(2).startsWith("Tasd") && ! this.computeFragment(3).contentEquals("asdD"))
-                retVal = false;
-            else if (this.computeFragment(1).contentEquals("D") && (this.computeFragment(3).startsWith("TA") ||
-                    this.computeFragment(3).contentEquals("T")))
-                retVal = false;
-            else if (this.computeFragment(1).contentEquals("0") && ! this.computeFragment(2).contentEquals("0"))
-                retVal = false;
             else if (this.computeFragment(0).contentEquals("M") && this.computeFragment(3).contentEquals("A"))
                 retVal = false;
-            else if (! this.computeFragment(2).contentEquals("0") && (this.computeFragment(3).contentEquals("0") ||
-                    this.computeFragment(3).contentEquals("A")))
-                retVal = false;
-            if (this.computeFragment(1).contentEquals("D") && (this.computeFragment(3).contentEquals("0") ||
-                    this.computeFragment(3).contentEquals("A")))
-                retVal = false;
-            if (this.computeFragment(2).contentEquals("0") && this.computeFragment(5).contentEquals("000") &&
-                    (this.computeFragment(3).contentEquals("P") || this.computeFragment(3).contentEquals("C")))
-                retVal = false;
-            if (! this.computeFragment(5).contentEquals("000") && (this.computeFragment(3).contentEquals("0") ||
-                    this.computeFragment(3).contentEquals("A")))
-                retVal = false;
+            else
+                switch (this.computeFragment(2)) {
+                case "TA":
+                case "TA1":
+                case "T":
+                    if (! this.computeFragment(1).contentEquals("0")) retVal = false;
+                    if (! this.computeFragment(3).contentEquals("C")) retVal = false;
+                    break;
+                case "0":
+                    if (! this.computeFragment(1).contentEquals("0")) retVal = false;
+                    if (! this.computeFragment(3).contentEquals("0") && ! this.computeFragment(3).contentEquals("A")) retVal = false;
+                    break;
+                default : /* TasdX */
+                    if (! this.computeFragment(1).contentEquals("D")) retVal = false;
+                    if (! this.computeFragment(3).contentEquals("P")) retVal = false;
+                }
             return retVal;
         }
 
@@ -355,6 +355,25 @@ public class ThrSampleFormatter {
      */
     protected String[] getInsertChoices() {
         return this.choices.get(SampleId.INSERT_COL);
+    }
+
+    /**
+     * Suppress the derived columns.
+     *
+     * @param keepCols	array flagging columns to keep
+     */
+    protected void suppressDerived(boolean[] keepCols) {
+        int curCol = 0;
+        for (int i = 0; i < this.choices.size(); i++) {
+            // Get the number of columns for this fragment.
+            int nCurr = this.choices.get(i).length;
+            // If this is a derived fragment, suppress all its columns.
+            if (DERIVED_PARTS.contains(i)) {
+                for (int j = 0; j < nCurr; j++)
+                    keepCols[curCol + j] = false;
+            }
+            curCol += nCurr;
+        }
     }
 
 }
