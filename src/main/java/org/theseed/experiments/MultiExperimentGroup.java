@@ -47,7 +47,7 @@ public class MultiExperimentGroup extends ExperimentGroup {
     /** logging facility */
     protected static Logger log = LoggerFactory.getLogger(MultiExperimentGroup.class);
     /** sample name search pattern */
-    private static final Pattern SAMPLE_NAME = Pattern.compile("0?(\\S+)\s+([A-Z]\\d+)");
+    private static final Pattern SAMPLE_NAME = Pattern.compile("0?(\\S+)\\s+([A-Z]\\d+)");
     /** array of well letters */
     private static final String[] LETTERS = new String[] { "A", "B", "C", "D", "E", "F", "G", "H" };
     /** array of well numbers */
