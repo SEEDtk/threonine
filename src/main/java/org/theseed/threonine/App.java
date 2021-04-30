@@ -17,6 +17,7 @@ import org.theseed.utils.BaseProcessor;
  * rnaSeqCorr	compute the correlation between threonine production and RNA expression data for each feature
  * seqImpact	produce the RNA seq impact report
  * merge		merge the model prediction file with a virtual-space prediction file
+ * expConst		look for genes with generally constant expression levels
  *
  */
 public class App
@@ -61,6 +62,9 @@ public class App
             break;
         case "merge" :
             processor = new MergePredictionsProcessor();
+            break;
+        case "expConst" :
+            processor = new ConstantExpressionProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
