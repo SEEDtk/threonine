@@ -36,6 +36,8 @@ public class ThrSampleFormatter {
     private List<String[]> iChoices;
     /** permissible delete values */
     private String[] deleteChoices;
+    /** permissible insert values */
+    private String[] insertChoices;
     /** number of output columns for the sample description */
     private int numCols;
     /** choices for IPTG flag */
@@ -83,8 +85,11 @@ public class ThrSampleFormatter {
                 this.choices.add(choiceArray);
                 this.iChoices.add(this.parseChoiceLine(line));
             }
-            // Now process the deletes.
+            // Now process the inserts and deletes.
             String line = reader.next();
+            this.insertChoices = this.parseChoiceLine(line);
+            this.numCols += this.insertChoices.length;
+            log.info("{} insertable proteins.", this.insertChoices.length);
             this.deleteChoices = this.parseChoiceLine(line);
             this.numCols += this.deleteChoices.length;
             log.info("{} deletable proteins.", this.deleteChoices.length);
@@ -92,6 +97,30 @@ public class ThrSampleFormatter {
         log.info("{} total specification columns.", this.numCols);
     }
 
+    /**
+     * @return an insert string based on the subset of the inserts indicated by the specified integer
+     *
+     * @param mask	an integer indicating which insert choices to include in the set
+     */
+    public String insertSubset(int mask) {
+        String retVal;
+        // For an empty set, use 000.
+        if (mask == 0)
+            retVal = "000";
+        else {
+            // Here we have inserts to string together.
+            Set<String> inserts = new TreeSet<String>();
+            int i = 0;
+            while (mask > 0) {
+                if ((mask & 1) == 1)
+                    inserts.add(this.insertChoices[i]);
+                i++;
+                mask >>= 1;
+            }
+            retVal = StringUtils.join(inserts, "-");
+        }
+        return retVal;
+    }
     /**
      * @return a delete string based on the subset of the deletes indicated by the specified integer
      *
@@ -154,7 +183,10 @@ public class ThrSampleFormatter {
             this.storeOneHot(this.choices.get(i), parts[i], retVal, outIdx);
             outIdx += this.choices.get(i).length;
         }
-        // Fill in the 1-choices for the deletes.
+        // Fill in the 1-choices for the inserts and deletes.
+        for (String prot : sample.getInserts())
+            this.storeOneHot(this.insertChoices, prot, retVal, outIdx);
+        outIdx += this.getInsertChoices().length;
         for (String prot : sample.getDeletes())
             this.storeOneHot(this.deleteChoices, prot, retVal, outIdx);
         outIdx += this.deleteChoices.length;
@@ -209,7 +241,10 @@ public class ThrSampleFormatter {
                 this.limits[i] = ThrSampleFormatter.this.iChoices.get(i).length;
                 i++;
             }
-            // Here we have the number of possible deletion subsets.
+            // Here we have the number of possible insertion subsets.
+            this.limits[i] = 1 << ThrSampleFormatter.this.insertChoices.length;
+            i++;
+            // Now the deletion subsets.
             this.limits[i] = 1 << ThrSampleFormatter.this.deleteChoices.length;
             i++;
             // Next the IPTG flag.
@@ -239,13 +274,18 @@ public class ThrSampleFormatter {
             }
             // Construct the current sample ID.
             TextStringBuilder retVal = new TextStringBuilder(this.positions.length * 4);
+            // Single-choice fragments.
             int i = 0;
             while (i < ThrSampleFormatter.this.choices.size()) {
                 retVal.appendSeparator('_');
                 retVal.append(computeFragment(i));
                 i++;
             }
-            // Now we do the deletes.
+            // Inserts
+            retVal.append('_');
+            retVal.append(ThrSampleFormatter.this.insertSubset(this.positions[i]));
+            i++;
+            // Deletes
             retVal.append('_');
             retVal.append(ThrSampleFormatter.this.deleteSubset(this.positions[i]));
             i++;
@@ -304,6 +344,8 @@ public class ThrSampleFormatter {
             if (this.computeFragment(0).contentEquals("7") && this.computeFragment(3).contentEquals("0"))
                 retVal = false;
             else if (this.computeFragment(0).contentEquals("M") && this.computeFragment(3).contentEquals("A"))
+                retVal = false;
+            else if (this.computeFragment(0).contentEquals("M") && this.computeFragment(2).contentEquals("0"))
                 retVal = false;
             else
                 switch (this.computeFragment(2)) {

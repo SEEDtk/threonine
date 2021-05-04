@@ -17,10 +17,13 @@ public class LowCostSampleFilter extends SampleFilter {
     // FIELDS
     /** maximum nubmer of deletes */
     private int maxDeletes;
+    /** maximum nubmer of inserts */
+    private int maxInserts;
 
     public LowCostSampleFilter(IParms processor) {
         super(processor);
         this.maxDeletes = processor.getMaxDeletes();
+        this.maxInserts = processor.getMaxInserts();
     }
 
     @Override
@@ -29,6 +32,8 @@ public class LowCostSampleFilter extends SampleFilter {
         if (sample.getFragment(3).contentEquals("P"))
             retVal = false;
         else if (sample.getDeletes().size() > this.maxDeletes)
+            retVal = false;
+        else if (sample.getInserts().size() > this.maxInserts)
             retVal = false;
         return retVal;
     }

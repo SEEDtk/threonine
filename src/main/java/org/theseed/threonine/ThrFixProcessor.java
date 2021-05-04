@@ -190,6 +190,8 @@ public class ThrFixProcessor extends BaseProcessor {
                             String[] strainData = sample.getBaseFragments();
                             for (int i = 0; i < strainData.length; i++)
                                 this.choices.get(i).add(strainData[i]);
+                            for (String insert : sample.getInserts())
+                                this.choices.get(SampleId.INSERT_COL).add(insert);
                             for (String delete : sample.getDeletes())
                                 this.choices.get(SampleId.DELETE_COL).add(delete);
                             // Get the production, density, experiment ID, and well ID.

@@ -111,7 +111,7 @@ public class TestExperiment {
         result = group.getResult("P6", "C8", 24);
         assertThat(result.getWell(), equalTo("C8"));
         assertThat(result.getTimePoint(), equalTo(24.0));
-        assertThat(result.getStrain(), equalTo("926 DlysA ptac-thrABC  ptac-asd rhtA"));
+        assertThat(result.getStrain(), equalTo("926 DlysA ptac-thrABC ptac-asd rhtA"));
         assertThat(result.isIptg(), isTrue());
         assertThat(result.getGrowth(), closeTo(5.21, 0.001));
         assertThat(result.getProduction(), closeTo(0.00, 0.001));

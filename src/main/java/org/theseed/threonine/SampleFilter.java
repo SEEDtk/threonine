@@ -41,6 +41,11 @@ public abstract class SampleFilter {
          */
         public int getMaxDeletes();
 
+        /**
+         * @return the maximum number of inserts allowed
+         */
+        public int getMaxInserts();
+
     }
 
     /**

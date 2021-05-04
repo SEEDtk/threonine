@@ -42,6 +42,7 @@ import org.theseed.utils.ParseFailureException;
  * --delim 		type of delimiter to use (COMMA or TAB)
  * --filter		type of filter to apply
  * --maxD		for filter type LOW_COST, the maximum number of deletes
+ * --maxI		for filter type LOW_COST, the maximum number of inserts
  *
  * @author Bruce Parrello
  *
@@ -92,6 +93,10 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
     /** maximum number of deletes for certain filter types */
     @Option(name = "--maxD", metaVar = "2", usage = "maximum number of deletes (if filtered)")
     private int maxDeletes;
+
+    /** maximum number of inserts for certain filter types */
+    @Option(name = "--maxI", metaVar = "2", usage = "maximum number of inserts (if filtered)")
+    private int maxInserts;
 
     /** model directory */
     @Argument(index = 0, metaVar = "modelDir", usage = "directory containing the target model", required = true)
@@ -193,6 +198,11 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
     @Override
     public int getMaxDeletes() {
         return this.maxDeletes;
+    }
+
+    @Override
+    public int getMaxInserts() {
+        return this.maxInserts;
     }
 
 }

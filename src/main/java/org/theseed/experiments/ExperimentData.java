@@ -183,7 +183,7 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
          * @param iptg			TRUE if iptg is present, else FALSE
          */
         public void setup(String well, double timePoint, String strainString, boolean iptg) {
-            this.strain = strainString;
+            this.strain = strainString.replaceAll("\\s+", " ");
             // Form the key.
             this.id = new Key(well, timePoint);
             // Determine whether or not IPTG is active.

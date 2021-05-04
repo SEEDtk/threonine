@@ -41,7 +41,7 @@ public class GrowthData implements Comparable<GrowthData> {
     /** algorithm for computing the mean */
     public static MeanComputer MEAN_COMPUTER = new MeanComputer.Sigma(2);
     /** minimum acceptable density */
-    public static double MIN_DENSITY = 0.001;
+    public static double MIN_DENSITY = 0.1;
 
     /**
      * Create a blank growth-data object.
