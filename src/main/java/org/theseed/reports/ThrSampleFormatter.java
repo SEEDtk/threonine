@@ -48,6 +48,8 @@ public class ThrSampleFormatter {
     private static final String[] MEDIA = new String[] { "M1" };
     /** list of derived fragments */
     private static final Set<Integer> DERIVED_PARTS = new TreeSet<Integer>(Arrays.asList(1, 3));
+    /** list of derived columns */
+    private static final Set<String> DERIVED_COLUMNS = new TreeSet<String>(Arrays.asList("asdD"));
 
     /**
      * @return the choices present in a line from the choice file
@@ -90,6 +92,7 @@ public class ThrSampleFormatter {
             this.insertChoices = this.parseChoiceLine(line);
             this.numCols += this.insertChoices.length;
             log.info("{} insertable proteins.", this.insertChoices.length);
+            line = reader.next();
             this.deleteChoices = this.parseChoiceLine(line);
             this.numCols += this.deleteChoices.length;
             log.info("{} deletable proteins.", this.deleteChoices.length);
@@ -157,6 +160,8 @@ public class ThrSampleFormatter {
             System.arraycopy(choiceA, 0, retVal, outIdx, choiceA.length);
             outIdx += choiceA.length;
         }
+        System.arraycopy(this.insertChoices, 0, retVal, outIdx, this.insertChoices.length);
+        outIdx += this.insertChoices.length;
         System.arraycopy(this.deleteChoices, 0, retVal, outIdx, this.deleteChoices.length);
         int n = outIdx + this.deleteChoices.length;
         for (int i = outIdx; i < n; i++)
@@ -232,7 +237,7 @@ public class ThrSampleFormatter {
          */
         public SampleIterator() {
             // Position on the first sample to return.
-            this.positions = new int[ThrSampleFormatter.this.iChoices.size() + 4];
+            this.positions = new int[ThrSampleFormatter.this.iChoices.size() + 5];
             Arrays.fill(this.positions, 0);
             // Compute the limits.
             this.limits = new int[this.positions.length];
@@ -396,7 +401,7 @@ public class ThrSampleFormatter {
      * @return the possible insertions
      */
     protected String[] getInsertChoices() {
-        return this.choices.get(SampleId.INSERT_COL);
+        return this.insertChoices;
     }
 
     /**
@@ -415,6 +420,12 @@ public class ThrSampleFormatter {
                     keepCols[curCol + j] = false;
             }
             curCol += nCurr;
+        }
+        // Get the titles and suppress the derived values.
+        String[] titles = this.getTitles();
+        for (int i = 0; i < titles.length; i++) {
+            if (DERIVED_COLUMNS.contains(titles[i]))
+                keepCols[i] = false;
         }
     }
 

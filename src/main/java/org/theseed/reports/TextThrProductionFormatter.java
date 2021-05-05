@@ -157,25 +157,28 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
 
     @Override
     protected void closeReport() {
-        // Suppress the derived columns.
-        this.suppressDerived(this.keepCol);
-        // Write the header line.
-        this.stringBuffer.clear().append("sample_id");
-        String[] titles = this.getTitles();
-        for (int i = 0; i < titles.length; i++) {
-            if (this.keepCol[i])
-                this.stringBuffer.append(delim).append(titles[i]);
+        // Onlt proceed if we have some data to output.
+        if (this.keepCol != null) {
+            // Suppress the derived columns.
+            this.suppressDerived(this.keepCol);
+            // Write the header line.
+            this.stringBuffer.clear().append("sample_id");
+            String[] titles = this.getTitles();
+            for (int i = 0; i < titles.length; i++) {
+                if (this.keepCol[i])
+                    this.stringBuffer.append(delim).append(titles[i]);
+            }
+            this.stringBuffer.append(delim).append("density").append(delim).append("production");
+            String header = this.stringBuffer.toString();
+            this.registerHeader(header);
+            // Scramble the output.
+            log.info("Shuffling data lines for output.");
+            this.buffer.shuffle(this.buffer.size());
+            // Spool it out.
+            log.info("Unspooling data lines.");
+            for (DataLine line : this.buffer)
+                this.writeLine(line);
         }
-        this.stringBuffer.append(delim).append("density").append(delim).append("production");
-        String header = this.stringBuffer.toString();
-        this.registerHeader(header);
-        // Scramble the output.
-        log.info("Shuffling data lines for output.");
-        this.buffer.shuffle(this.buffer.size());
-        // Spool it out.
-        log.info("Unspooling data lines.");
-        for (DataLine line : this.buffer)
-            this.writeLine(line);
         this.writer.close();
     }
 

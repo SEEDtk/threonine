@@ -168,9 +168,9 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
                 // Apply the filter.
                 if (this.filter.acceptable(sample)) {
                     // Check the insert and delete possibilities to make sure they are supported.
-                    String insert = sample.getFragment(SampleId.INSERT_COL);
+                    Set<String> inserts = sample.getInserts();
                     Set<String> deletes = sample.getDeletes().stream().map(x -> "D" + x).collect(Collectors.toSet());
-                    if ((insert.contentEquals("000") || trainingHeaders.contains(insert)) && trainingHeaders.containsAll(deletes)) {
+                    if (trainingHeaders.containsAll(inserts) && trainingHeaders.containsAll(deletes)) {
                         double[] parms = this.formatter.parseSample(sample);
                         String parmString = IntStream.range(0, parms.length).filter(i -> this.keep[i]).mapToObj(i -> Double.toString(parms[i]))
                                 .collect(Collectors.joining(this.delim));
