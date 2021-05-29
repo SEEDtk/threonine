@@ -17,6 +17,7 @@ import org.theseed.utils.BaseProcessor;
  * seqImpact	produce the RNA seq impact report
  * merge		merge the model prediction file with a virtual-space prediction file
  * expConst		look for genes with generally constant expression levels
+ * diffTables	create a sample-difference table spreadsheet
  *
  */
 public class App
@@ -61,6 +62,9 @@ public class App
             break;
         case "expConst" :
             processor = new ConstantExpressionProcessor();
+            break;
+        case "diffTables" :
+            processor = new DiffTableProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
