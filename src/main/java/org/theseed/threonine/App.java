@@ -18,6 +18,7 @@ import org.theseed.utils.BaseProcessor;
  * merge		merge the model prediction file with a virtual-space prediction file
  * expConst		look for genes with generally constant expression levels
  * diffTables	create a sample-difference table spreadsheet
+ * fillPegs		add missing pegs to a tab-delimited file
  *
  */
 public class App
@@ -65,6 +66,9 @@ public class App
             break;
         case "diffTables" :
             processor = new DiffTableProcessor();
+            break;
+        case "fillPegs" :
+            processor = new FillPegsProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
