@@ -232,7 +232,7 @@ public class RnaSeqClassProcessor extends BaseProcessor implements AdvancedExpre
                 // Here we must convert the value of each expression column.
                 double[] sampleData = entry.getValue();
                 String dataCols = Arrays.stream(sampleData).mapToObj(v -> Double.toString(v)).collect(Collectors.joining("\t"));
-                writer.format("%s\t%s\t%s\t%14.4f\t%s%n", entry.getKey(), dataCols, growth, info.getProduction(),
+                writer.format("%s\t%s\t%s\t%14.4f\t%s%n", entry.getKey(), dataCols, info.getProduction(), growth,
                         Production.getLevel(info.getProduction()));
             }
         }
