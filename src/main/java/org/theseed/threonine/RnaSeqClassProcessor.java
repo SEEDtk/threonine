@@ -7,16 +7,11 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.SortedMap;
-import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
@@ -25,18 +20,12 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.theseed.genome.Feature;
-import org.theseed.genome.Genome;
 import org.theseed.io.MarkerFile;
-import org.theseed.io.TabbedLineReader;
-import org.theseed.reports.NaturalSort;
-import org.theseed.rna.BaselineComputer;
-import org.theseed.rna.ExpressionConverter;
-import org.theseed.rna.IBaselineParameters;
-import org.theseed.rna.IBaselineProvider;
+import org.theseed.rna.AdvancedExpressionConverter;
 import org.theseed.rna.RnaData;
 import org.theseed.rna.RnaJobInfo;
-import org.theseed.rna.RnaData.Row;
+import org.theseed.rna.RnaSeqFeatureFilter;
+import org.theseed.rna.RnaFeatureData;
 import org.theseed.utils.BaseProcessor;
 import org.theseed.utils.ParseFailureException;
 
@@ -55,28 +44,30 @@ import org.theseed.utils.ParseFailureException;
  *
  * --minGood	percent of samples that must have data on a feature for it to be considered useful (default is 90)
  * --all		minimum percent quality for a sample to be considered valid (default is 40)
- * --sub		if specified, the name of a GTO file; only features in the GTO file's subsystems will be output
- * --mod		if specified, the name of a regulon/modulon file; only features in modulons will be output
- * --method		method for reporting the expression values (RAW, STD, TRIAGE)
+ * --filter		method for filtering features (NONE, SUBSYSTEMS, MODULONS, FILE, GROUP)
+ * --sub		if specified, the name of a GTO file; only features in the GTO's subsystems will be output (filter = SUBSYSTEMS)
+ * --mod		if specified, the name of a regulon/modulon file; only features in modulons will be output (filter = MODULONS)
+ * --filterFile	the name of a file to use in filtering: a tab-delimited file (with headers) containing the features to include in its first column (filter = FILE)
+ * 				and optionally, the name of the feature's group in the second column (filter = GROUP); a GTO containing subsystem definitions (filter = SUBSYSTEMS);
+ * 				a regulon/modulon file used to restrict the features to modulons (filter = MODULONS)
+ * --method		method for reporting the expression values (RAW TRIAGE)
  * --minFeats	percent of features in a sample that must have data for the sample to be good (default is 50)
- * --baseline	method for computing baseline value in triage output (TRIMEAN, SAMPLE, FILE)
- * --baseId		ID of the base sample for a SAMPLE baseline
- * --baseFile	name of file containing baseline data for a FILE baseline
+ * --baseFile	name of file containing baseline data for TRIAGE
  *
  * @author Bruce Parrello
  *
  */
-public class RnaSeqClassProcessor extends BaseProcessor implements IBaselineProvider, IBaselineParameters {
+public class RnaSeqClassProcessor extends BaseProcessor implements AdvancedExpressionConverter.IParms, RnaSeqFeatureFilter.IParms {
 
     // FIELDS
     /** logging facility */
     protected static Logger log = LoggerFactory.getLogger(RnaSeqClassProcessor.class);
-    /** set of features in subsystems/modulons */
-    private Set<String> subFids;
-    /** baseline computer */
-    private BaselineComputer baselineComputer;
     /** RNA sequence database */
     private RnaData data;
+    /** filtering object */
+    private RnaSeqFeatureFilter filter;
+    /** expression converter */
+    private AdvancedExpressionConverter converter;
 
     // COMMAND-LINE OPTIONS
 
@@ -88,33 +79,25 @@ public class RnaSeqClassProcessor extends BaseProcessor implements IBaselineProv
     @Option(name = "--all", usage = "include suspicious samples")
     private boolean useAll;
 
-    /** if specified, only features in modulons will be used */
-    @Option(name = "--mod", metaVar = "modulons.tbl", usage = "modulon file used to filter out non-modulon features")
-    private File modFile;
-
-    /** if specified, only features in subsystems will be used */
-    @Option(name = "--sub", metaVar = "genome.gto", usage = "genome whose subsystems will be used to filter the features")
-    private File subGenome;
-
     /** mininum percent of good pegs required to use a sample */
     @Option(name = "--minFeats", metaVar = "50", usage = "minimum percent of expression values that must be good for each sample used")
     private int minFeats;
 
+    /** method to use for filtering features */
+    @Option(name = "--filter", usage = "type of feature filtering/grouping to use")
+    private RnaSeqFeatureFilter.Type filterType;
+
+    /** file used to define filtering */
+    @Option(name = "--filterFile", usage = "file used to refine filtering")
+    private File filterFile;
+
     /** method to use for converting expression value */
     @Option(name = "--method", usage = "method to use for converting expression value to input value")
-    private ExpressionConverter.Type method;
-
-    /** method for computing baseline for triage output */
-    @Option(name = "--baseline", usage = "method for computing triage baseline")
-    private BaselineComputer.Type baselineType;
+    private AdvancedExpressionConverter.Type method;
 
     /** file containing baseline values */
-    @Option(name = "--baseFile", usage = "file containing baseline values for triage type FILE output")
+    @Option(name = "--baseFile", usage = "file containing baseline values for triage output")
     private File baseFile;
-
-    /** ID of sample containing baseline values */
-    @Option(name = "--baseId", usage = "sample containing baseline values for triage type SAMPLE output")
-    private String baseSampleId;
 
     /** name of the RNA seq database file */
     @Argument(index = 0, metaVar = "rnaData.ser", usage = "name of RNA Seq database file", required = true)
@@ -129,12 +112,10 @@ public class RnaSeqClassProcessor extends BaseProcessor implements IBaselineProv
         this.minGood = 90;
         this.minFeats = 50;
         this.useAll = false;
-        this.subGenome = null;
-        this.method = ExpressionConverter.Type.RAW;
-        this.baselineType = BaselineComputer.Type.TRIMEAN;
+        this.method = AdvancedExpressionConverter.Type.RAW;
         this.baseFile = null;
-        this.baseSampleId = null;
-        this.modFile = null;
+        this.filterType = RnaSeqFeatureFilter.Type.NONE;
+        this.filterFile = null;
     }
 
     @Override
@@ -153,23 +134,14 @@ public class RnaSeqClassProcessor extends BaseProcessor implements IBaselineProv
             throw new ParseFailureException("Invalid minGood threshold.  Must be 100 or less.");
         if (this.minFeats > 100)
             throw new ParseFailureException("Invalid minFeats threshold.  Must be 100 or less.");
-        // Verify the baseline computation.
-        if (this.method == ExpressionConverter.Type.TRIAGE) {
-            // Here we need to validate and create the baseline computation method.
-            this.baselineComputer = BaselineComputer.validateAndCreate(this, this.baselineType);
-        }
-        // Verify we don't have both modulon and subsystem rules.
-        if (this.modFile != null && this.subGenome != null)
-            throw new ParseFailureException("Cannot have both modulon and subsystem restrictions.");
-        // Validate the modulon or subsystem limits.
-        if (this.modFile != null) {
-            this.setupModulons();
-        } else if (this.subGenome == null) {
-            this.subFids = null;
-            log.info("No filtering will be used.");
-        } else {
-            setupSubsystems();
-        }
+        // Create the filter.
+        log.info("Initializing {} feature filter.", this.filterType);
+        this.filter = this.filterType.create(this);
+        this.filter.initialize();
+        // Create the expression converter.
+        log.info("Initalizing {} expression converter.", this.method);
+        this.converter = this.method.create(this);
+        this.converter.initialize();
         // Insure the output directory is set up.
         if (! this.outDir.isDirectory()) {
             log.info("Creating output directory {}.", this.outDir);
@@ -186,38 +158,6 @@ public class RnaSeqClassProcessor extends BaseProcessor implements IBaselineProv
         return true;
     }
 
-    /**
-     * Set up modulon filtering.
-     *
-     * @throws IOException
-     */
-    private void setupModulons() throws IOException {
-        this.subFids = new HashSet<String>(3000);
-        try (TabbedLineReader reader = new TabbedLineReader(this.modFile)) {
-            for (TabbedLineReader.Line line : reader) {
-                // If there is a modulon string, add the feature ID to the filter.
-                if (! line.get(1).isEmpty())
-                    this.subFids.add(line.get(0));
-            }
-        }
-        log.info("{} features found in modulons in file {}.", this.subFids.size(), this.modFile);
-    }
-
-    /**
-     * Set up subsystem filtering.
-     *
-     * @throws IOException
-     */
-    public void setupSubsystems() throws IOException {
-        Genome genome = new Genome(this.subGenome);
-        this.subFids = new HashSet<String>(3000);
-        for (Feature feat : genome.getPegs()) {
-            if (! feat.getSubsystems().isEmpty())
-                this.subFids.add(feat.getId());
-        }
-        log.info("{} features found in subsystems of {}.", this.subFids.size(), genome);
-    }
-
     @Override
     protected void runCommand() throws Exception {
         // Isolate the samples of interest.  For each one, we need its column index.
@@ -225,15 +165,15 @@ public class RnaSeqClassProcessor extends BaseProcessor implements IBaselineProv
         Collection<RnaData.JobData> jobs = this.getJobs();
         Map<String, RnaJobInfo> jobMap = new HashMap<String, RnaJobInfo>(jobs.size());
         // Compute the number of good features needed in a sample.
-        int fThreshold = (this.getData().rows() * this.minFeats + 50) / 100;
+        int fThreshold = (this.data.rows() * this.minFeats + 50) / 100;
         // Loop through the jobs, keeping the ones with production data.
         for (RnaData.JobData job : jobs) {
             if (Double.isFinite(job.getProduction()) && (this.useAll || ! job.isSuspicious())) {
-                RnaJobInfo jobInfo = new RnaJobInfo(this.getData(), job);
+                RnaJobInfo jobInfo = new RnaJobInfo(this.data, job);
                 // Count the good features in this sample.
-                int fCount = (int) this.getData().getRows().stream().filter(x -> jobInfo.isValid(x)).count();
+                int fCount = (int) this.data.getRows().stream().filter(x -> jobInfo.isValid(x)).count();
                 if (fCount >= fThreshold)
-                    jobMap.put(job.getName(), new RnaJobInfo(this.getData(), job));
+                    jobMap.put(job.getName(), new RnaJobInfo(this.data, job));
             }
         }
         int numJobs = jobMap.size();
@@ -243,46 +183,45 @@ public class RnaSeqClassProcessor extends BaseProcessor implements IBaselineProv
         // This will track the number of bad feature values found in the good rows.
         int totalValues = 0;
         double goodValues = 0.0;
-        // Now we need to find the valid features.  We will create a map of each feature's column
-        // name to its feature ID.
+        int goodFeats = 0;
+        // Now we need to find the valid features.
         log.info("Searching for good pegs with threshold of {} samples.", threshold);
-        SortedMap<String, String> goodFids = new TreeMap<String, String>(new NaturalSort());
-        for (RnaData.Row row : this.getData()) {
-            String fid = row.getFeat().getId();
-            if (this.subFids == null || this.subFids.contains(fid)) {
+        for (RnaData.Row row : this.data) {
+            RnaFeatureData feat = row.getFeat();
+            if (this.filter.checkFeature(feat)) {
                 int valid = (int) jobMap.values().stream().filter(x -> x.isValid(row)).count();
                 if (valid >= threshold) {
                     totalValues += numJobs;
                     goodValues += valid;
-                    String fidName = RnaSeqBaseProcessor.computeGeneId(row);
-                    goodFids.put(fidName, fid);
+                    this.filter.saveFeature(row);
+                    goodFeats++;
                 }
             }
         }
-        log.info("{} good features found for the good samples.  {}% of the values were good.",
-                goodFids.size(), Math.round(goodValues * 100 / totalValues));
-        // We will keep column titles in here.
-        List<String> colTitles = new ArrayList<String>(goodFids.size());
-        // This will hold the expression levels for each sample.
-        Map<String, double[]> sampleDataMap =
-                jobMap.keySet().stream().collect(Collectors.toMap(x -> x, x -> new double[goodFids.size()]));
-        // Build a data row for each sample.
-        ExpressionConverter converter = this.method.create(this);
-        log.info("Collecting data for each sample.");
-        for (Map.Entry<String, String> fidEntry : goodFids.entrySet()) {
-            RnaData.Row row = this.getData().getRow(fidEntry.getValue());
-            colTitles.add(fidEntry.getKey());
-            // Compute the column index of this feature.
-            int i = colTitles.size() - 1;
-            converter.analyzeRow(row);
-            // Process each sample, filling in the feature's expression value.
-            for (Map.Entry<String, RnaJobInfo> entry : jobMap.entrySet()) {
-                double[] sampleData = sampleDataMap.get(entry.getKey());
-                sampleData[i] = converter.getExpression(entry.getValue());
+        log.info("{} good values found out of {} total values ({}%).  {} features selected for processing.", goodValues, totalValues, goodValues * 100.0 / totalValues, goodFeats);
+        // Now the filter knows which features to keep and to which groups they belong.
+        // Loop through the RNA data rows (one per feature), accumulating values.  In the easy case,
+        // we are tilting the matrix so each row is a sample instead of a feature.  In the complicated case,
+        // we are also merging the values into groups.
+        this.filter.initializeRows(jobMap.keySet());
+        for (RnaData.Row row : this.data) {
+            // Get this feature's ID.
+            String fid = row.getFeat().getId();
+            // Loop through the samples, processing the good values in this feature's row.
+            for (Map.Entry<String, RnaJobInfo> jobEntry : jobMap.entrySet()) {
+                RnaData.Weight weight = row.getWeight(jobEntry.getValue().getIdx());
+                if (weight != null) {
+                    String sample = jobEntry.getKey();
+                    double weightValue = weight.getWeight();
+                    if (weight.isExactHit() && Double.isFinite(weightValue))
+                        this.filter.processValue(sample, fid, weightValue);
+                }
             }
         }
-        log.info("{} feature rows processed.", colTitles.size());
+        Map<String, double[]> sampleDataMap = this.filter.finishRows(this.converter);
+        log.info("Data ready for output.");
         // Finally, we generate the output.
+        List<String> colTitles = this.filter.getTitles();
         File dataFile = new File(this.outDir, "data.tbl");
         try (PrintWriter writer = new PrintWriter(dataFile)) {
             this.writeHeader(writer, colTitles);
@@ -290,7 +229,9 @@ public class RnaSeqClassProcessor extends BaseProcessor implements IBaselineProv
             for (Map.Entry<String, double[]> entry : sampleDataMap.entrySet()) {
                 RnaJobInfo info = jobMap.get(entry.getKey());
                 String growth = (Double.isFinite(info.getGrowth()) ? Double.toString(info.getGrowth()) : "");
-                String dataCols = Arrays.stream(entry.getValue()).mapToObj(v -> Double.toString(v)).collect(Collectors.joining("\t"));
+                // Here we must convert the value of each expression column.
+                double[] sampleData = entry.getValue();
+                String dataCols = Arrays.stream(sampleData).mapToObj(v -> Double.toString(v)).collect(Collectors.joining("\t"));
                 writer.format("%s\t%s\t%s\t%14.4f\t%s%n", entry.getKey(), dataCols, growth, info.getProduction(),
                         Production.getLevel(info.getProduction()));
             }
@@ -316,30 +257,20 @@ public class RnaSeqClassProcessor extends BaseProcessor implements IBaselineProv
     }
 
     @Override
-    public double getBaseline(Row row) {
-        return this.baselineComputer.getBaseline(row);
-    }
-
-    @Override
-    public File getFile() {
+    public File getBaseFile() {
         return this.baseFile;
-    }
-
-    @Override
-    public String getSample() {
-        return this.baseSampleId;
     }
 
     /**
      * @return a list of the jobs for the RNA database
      */
     protected List<RnaData.JobData> getJobs() {
-        return this.getData().getSamples();
+        return this.data.getSamples();
     }
 
     @Override
-    public RnaData getData() {
-        return this.data;
+    public File getFilterFile() {
+        return this.filterFile;
     }
 
 }
