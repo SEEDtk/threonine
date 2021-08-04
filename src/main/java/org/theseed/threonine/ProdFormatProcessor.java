@@ -33,8 +33,8 @@ import org.theseed.utils.ParseFailureException;
  *  bad				"Y" for a row with bad data, "?" for a row with questionable data, else empty
  *
  * There is also a required "choices.tbl" file that describes the labels for each of the fields in the strain name.
- * The records in this file correspond to the fields in the strain ID.  The last record represents the deleted genes,
- * which get special treatment.  The possible field values are listed in comma-separated form.  Values of "0" or "000"
+ * The records in this file correspond to the fields in the strain ID.  The two last records represent the inserted and
+ * deleted genes, which get special treatment.  The possible field values are listed in comma-separated form.  Values of "0" or "000"
  * are treated as empty cases.
  *
  * The positional parameter is the name of the output directory.
