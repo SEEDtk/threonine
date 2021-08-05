@@ -70,6 +70,9 @@ public class App
         case "fillPegs" :
             processor = new FillPegsProcessor();
             break;
+        case "prodMatrix" :
+            processor = new ProdMatrixProcessor();
+            break;
         default:
             throw new RuntimeException("Invalid command " + command);
         }
