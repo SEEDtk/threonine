@@ -53,5 +53,4 @@ public class TextProdMatrixReporter extends ProdMatrixReporter {
             this.writer.close();
     }
 
-    // TODO constructors and methods for TextProdMatrixReporter
 }
