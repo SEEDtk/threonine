@@ -96,7 +96,6 @@ public abstract class ExperimentGroup implements Iterable<ExperimentData> {
 
     /** special NONE string */
     protected static final String NONE_STRING = "NO PLASMID";
-    /** plate column strings */
     /** pattern for blank cells */
     protected static final Pattern BLANK_CELL = Pattern.compile("blank|blak", Pattern.CASE_INSENSITIVE);
     /** pattern for well labels */
