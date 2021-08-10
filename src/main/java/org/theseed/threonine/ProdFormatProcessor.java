@@ -47,7 +47,7 @@ import org.theseed.utils.ParseFailureException;
  * --minHours	minimum time point to include (default 0)
  * --maxHours	maximum time point to include (default 24)
  * --min		minimum production; only production values strictly greater than this will be output; the default is -1
- * --max		maximum production; only production values strictly less than this will be output; the default is 5
+ * --max		maximum production; only production values strictly less than this will be output; the default is 10
  * --pure		skip questionable results
  * --prod		name of production column to use; the default is "thr_production"
  * --limited	comma-delimited list of strains IDs to include (default is include all)
@@ -119,7 +119,7 @@ public class ProdFormatProcessor extends BaseProcessor {
         this.minHours = 0.0;
         this.maxHours = 24.0;
         this.minBound = -1.0;
-        this.maxBound = 5.0;
+        this.maxBound = 10.0;
         this.pureFlag = false;
         this.prodName = "thr_production";
         this.limitStrains = null;

@@ -43,16 +43,18 @@ import org.theseed.utils.BaseProcessor;
  *
  * The command-line options are as follows.
  *
- * -h	display command-line usagee
+ * -h	display command-line usage
  * -v	display more frequent log messages
  *
- * --mean		type of mean to use (MIDDLE, SIGMA2, SIGMA1, TRIMEAN)
+ * --mean		type of mean to use (MIDDLE, SIGMA2, SIGMA1, TRIMEAN, MAX)
  * --good		only output good samples
  * --alert		specifies a range; production values with a higher spread in values than
  * 				the specified range are flagged as questionable (the default is 1.0)
  * --trigger	specifies a threshold; if a time point is greater than all the other time
  * 				points (two or more) by the threshold, then the production value is flagged
  * 				as questionable
+ * --time		if specified, only the indicated time point will be output; a negative value indicates no filtering
+ * --iptg		if specified, only IPTG-positive samples will be output
  *
  * @author Bruce Parrello
  *
@@ -87,6 +89,14 @@ public class ThrFixProcessor extends BaseProcessor {
     @Option(name = "--trigger", usage = "threshold for detecting anomalous time points")
     private double triggerThreshold;
 
+    /** time filter */
+    @Option(name = "--time", metaVar = "24.0", usage = "time point for time-point filtering, if specified")
+    private double timeFilter;
+
+    /** IPTG filter flag */
+    @Option(name = "--iptg", usage = "if specified, only IPTG-positive samples will be output")
+    private boolean iptgFilter;
+
     /** old strain data file */
     @Argument(index = 0, metaVar = "oldStrains.tbl", usage = "old strain information file", required = true)
     private File oldFile;
@@ -105,6 +115,8 @@ public class ThrFixProcessor extends BaseProcessor {
         this.alertRange = 1.0;
         this.meanType = MeanComputer.Type.TRIMEAN;
         this.triggerThreshold = 1.2;
+        this.timeFilter = -1.0;
+        this.iptgFilter = false;
     }
 
      @Override
@@ -141,6 +153,7 @@ public class ThrFixProcessor extends BaseProcessor {
         int badStrainRows = 0;
         int keptRows = 0;
         int zeroProdRows = 0;
+        int filterRows = 0;
         // Now loop through the file.
         try (TabbedLineReader oldStream = new TabbedLineReader(this.oldFile)) {
             int strainCol = oldStream.findField("strain_lower");
@@ -185,6 +198,9 @@ public class ThrFixProcessor extends BaseProcessor {
                                 log.debug("Invalid input strain ID {}.", strain);
                                 badStrainNames.add(strain);
                             }
+                        } else if (this.iptgFilter && ! sample.isIPTG() || this.timeFilter >= 0.0 && sample.getTimePoint() != this.timeFilter) {
+                            // Here the sample is rejected by the filtering criteria.
+                            filterRows++;
                         } else {
                             // Update the choices.
                             String[] strainData = sample.getBaseFragments();
@@ -225,7 +241,7 @@ public class ThrFixProcessor extends BaseProcessor {
         }
         log.info("{} columns required for training set.", colCount);
         // Write out the other stats.
-        log.info("{} rows had improperly-formatted strain names.", badStrainRows);
+        log.info("{} rows had improperly-formatted strain names.  {} rows were removed by filtering", badStrainRows, filterRows);
         log.info("{} rows were missing growth or production numbers, {} input rows were suspect, and {} were good.",
                 badNumRows, badSampleRows, keptRows);
         log.info("{} good rows had no production.", zeroProdRows);

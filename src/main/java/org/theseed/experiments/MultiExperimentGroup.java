@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
  *
  * where each X is an IPTG row and each Y is an original row from which it is copied.  The IPTG paragraph must be last.
  *
- * All samples in this type of group are for the same time point.
+ * The time point for this group is stored in the file names-- in the middle for production files and at the end for growth files.
  *
  * The sample names consist of the plate ID and the well label with no additional text.
  *
@@ -47,7 +47,7 @@ public class MultiExperimentGroup extends ExperimentGroup {
     /** logging facility */
     protected static Logger log = LoggerFactory.getLogger(MultiExperimentGroup.class);
     /** sample name search pattern */
-    private static final Pattern SAMPLE_NAME = Pattern.compile("0?(\\S+)\\s+([A-Z]\\d+)");
+    private static final Pattern SAMPLE_NAME = Pattern.compile("0?([^\\s\\-]+)(?:[ -](\\d+)H)?\\s+([A-Z]\\d+)");
     /** array of well letters */
     private static final String[] LETTERS = new String[] { "A", "B", "C", "D", "E", "F", "G", "H" };
     /** array of well numbers */
@@ -60,6 +60,8 @@ public class MultiExperimentGroup extends ExperimentGroup {
     private static final Pattern PLATE_LINE = Pattern.compile("Layout for set (\\S+)\\.?");
     /** pattern for non-ASCII characters */
     private static final Pattern BAD_CHARS = Pattern.compile("[^\\x00-\\x7F]");
+    /** pattern for parsing time point from growth file name */
+    private static final Pattern TIME_POINT = Pattern.compile(".+_(\\d+)h.+");
 
     /**
      * Construct the experiment group.
@@ -79,8 +81,13 @@ public class MultiExperimentGroup extends ExperimentGroup {
     }
 
     @Override
-    protected double computeTimePoint(File growthFile) {
-        return this.getTimePoint();
+    protected double computeTimePoint(File fileName) {
+        String baseName = fileName.getName();
+        Matcher m = TIME_POINT.matcher(baseName);
+        double retVal = this.getTimePoint();
+        if (m.matches())
+            retVal = Integer.valueOf(m.group(1));
+        return retVal;
     }
 
     @Override
@@ -231,8 +238,14 @@ public class MultiExperimentGroup extends ExperimentGroup {
     protected ExperimentGroup.SampleDesc parseSampleName(String data) {
         ExperimentGroup.SampleDesc retVal = null;
         Matcher m = SAMPLE_NAME.matcher(data);
-        if (m.matches())
-            retVal = new ExperimentGroup.SampleDesc(m.group(1), m.group(2), this.getTimePoint());
+        if (m.matches()) {
+            // Trim the time from the set ID (if any).
+            String setId = m.group(1);
+            double time = this.getTimePoint();
+            if (m.group(2) != null)
+                time = Integer.valueOf(m.group(2));
+            retVal = new ExperimentGroup.SampleDesc(setId, m.group(3), time);
+        }
         return retVal;
     }
 

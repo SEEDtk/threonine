@@ -93,6 +93,8 @@ public abstract class ExperimentGroup implements Iterable<ExperimentData> {
     private Map<String, Set<String>> badWells;
     /** set of time points to create during layout */
     private Set<Double> timeSeries;
+    /** start column (0-based) for spreadsheet tables */
+    private int startCol;
 
     /** special NONE string */
     protected static final String NONE_STRING = "NO PLASMID";
@@ -163,6 +165,7 @@ public abstract class ExperimentGroup implements Iterable<ExperimentData> {
         this.normFactor = 0.04;
         this.bigCols = 24;
         this.timePoint = 24.0;
+        this.startCol = 0;
         // Initialize the maps.
         this.badWells = new HashMap<String, Set<String>>();
         this.experimentMap = new HashMap<String, ExperimentData>();
@@ -186,10 +189,10 @@ public abstract class ExperimentGroup implements Iterable<ExperimentData> {
                 this.readBadWellFile(inFile);
             }
         }
-        // Compute the time series from the growth file names.
+        // Compute the time series from the production file names.
         this.timeSeries = new TreeSet<Double>();
-        for (File growthFile : this.growthFiles) {
-            double time = this.computeTimePoint(growthFile);
+        for (File prodFile : this.prodFiles) {
+            double time = this.computeTimePoint(prodFile);
             this.timeSeries.add(time);
         }
         log.info("{} time points will be used for this run.", this.timeSeries.size());
@@ -302,7 +305,8 @@ public abstract class ExperimentGroup implements Iterable<ExperimentData> {
         }
         for (File prodFile : this.prodFiles) {
             log.info("Analyzing production spreadsheet \"{}\".", prodFile);
-            this.readProductionFile(prodFile);
+            double time = this.computeTimePoint(prodFile);
+            this.readProductionFile(prodFile, time);
         }
     }
 
@@ -329,10 +333,11 @@ public abstract class ExperimentGroup implements Iterable<ExperimentData> {
      * two tables of interest-- one that describes the content of each cell (plate and
      *
      * @param prodFile	file name of the spreadsheet
+     * @param time		time point for this file
      *
      * @throws IOException
      */
-    protected void readProductionFile(File prodFile) throws IOException {
+    protected void readProductionFile(File prodFile, double time) throws IOException {
         try (InputStream fileStream = new FileInputStream(prodFile);
                 Workbook workbook = new XSSFWorkbook(fileStream)) {
             Sheet sheet = workbook.getSheetAt(0);
@@ -349,15 +354,15 @@ public abstract class ExperimentGroup implements Iterable<ExperimentData> {
             int valueCount = 0;
             while (rowIter.hasNext() && ! done) {
                 Row row = rowIter.next();
-                String label = stringValue(row.getCell(0));
+                String label = stringValue(row.getCell(this.startCol));
                 if (label.length() != 1)
                     done = true;
                 else {
                     // Here we have a plate row description.  Process each of the columns.
-                    ExperimentData.Result[] results = new ExperimentData.Result[this.bigCols+1];
-                    for (int c = 1; c <= this.bigCols; c++) {
+                    ExperimentData.Result[] results = new ExperimentData.Result[this.bigCols];
+                    for (int c = 0 ; c < this.bigCols; c++) {
                         // Get the cell content description.  Note we fix embedded new-lines.
-                        Cell cell = row.getCell(c);
+                        Cell cell = row.getCell(c + this.startCol);
                         String data = StringUtils.replaceChars(stringValue(cell), "\n", " ").toUpperCase();
                         // Parse it to compute the plate, label, and time point.
                         SampleDesc sample = this.parseSampleName(data);
@@ -366,10 +371,9 @@ public abstract class ExperimentGroup implements Iterable<ExperimentData> {
                         else {
                             String plate = sample.getPlate();
                             String well = sample.getWell();
-                            double time = sample.getTime();
                             ExperimentData experiment = this.experimentMap.get(plate);
                             if (experiment == null)
-                                throw new IOException("Invalid plate ID \"" + plate + " in sample map.");
+                                log.warn("Invalid plate ID \"{}\" in sample map.", plate);
                             else {
                                 // Get the well's result object.
                                 ExperimentData.Result result = experiment.getResult(well, time);
@@ -398,15 +402,15 @@ public abstract class ExperimentGroup implements Iterable<ExperimentData> {
             // Loop through the label rows.
             while (rowIter.hasNext() && ! done) {
                 Row row = rowIter.next();
-                String label = stringValue(row.getCell(0));
+                String label = stringValue(row.getCell(startCol));
                 if (label.length() != 1)
                     done = true;
                 else {
                     // Here we have a plate row description.  Process each of the columns.
                     ExperimentData.Result[] results = cellMaps.get(label);
-                    for (int c = 1; c <= this.bigCols; c++) {
+                    for (int c = 0; c < this.bigCols; c++) {
                         if (results[c] != null) {
-                            Cell cell = row.getCell(c);
+                            Cell cell = row.getCell(c + this.startCol);
                             results[c].setProduction(numValue(cell) / 1000.0);
                             valueCount++;
                         }
@@ -603,6 +607,13 @@ public abstract class ExperimentGroup implements Iterable<ExperimentData> {
         if (experiment != null)
             retVal = experiment.getResult(well, time);
         return retVal;
+    }
+
+    /**
+     * @param startCol 	the new starting column for spreadsheet samples
+     */
+    public void setStartCol(int startCol) {
+        this.startCol = startCol;
     }
 
 }

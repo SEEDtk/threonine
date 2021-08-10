@@ -6,6 +6,7 @@ package org.theseed.threonine;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -13,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
@@ -47,13 +49,14 @@ import org.theseed.utils.ParseFailureException;
  * -v	display more frequent log messages
  * -o	output file name (if not STDOUT)
  *
- * --strain		the strain ID for the samples to process
+ * --strain		strain IDs for the samples to process
  * --operon		the threonine operon style for the samples to process
- * --asd		the ASD mode for the samples to process
+ * --asd		the ASD modes for the samples to process
  * --time		the time point for the samples to process
  * --noIptg		if specified, only IPTG-negative samples will be processed; normally only IPTG-positive samples will be processed
  * --cutoff		minimum output value for high-performing strains
  * --outFormat	output report format
+ * --all		include bad and questionable samples
  *
  * @author Bruce Parrello
  *
@@ -75,6 +78,10 @@ public class ProdMatrixProcessor extends BaseProcessor {
     private Set<String> deletesFound;
     /** output report formatter */
     private ProdMatrixReporter reporter;
+    /** set of strains to include */
+    private Set<String> strainSet;
+    /** set of asd modes to include */
+    private Set<String> asdSet;
 
     // COMMAND-LINE OPTIONS
 
@@ -83,7 +90,7 @@ public class ProdMatrixProcessor extends BaseProcessor {
     private ProdMatrixReporter.Type outFormat;
 
     /** strain ID to process */
-    @Option(name = "--strain", metaVar = "7", usage = "ID of the strain whose samples should be processed")
+    @Option(name = "--strain", metaVar = "7", usage = "IDs of the strain whose samples should be processed (comma-delimited)")
     private String strainFilter;
 
     /** threonine operon style to process */
@@ -91,7 +98,7 @@ public class ProdMatrixProcessor extends BaseProcessor {
     private String operonFilter;
 
     /** ASD mode to process */
-    @Option(name = "--asd", metaVar = "asdO", usage = "ID of the ASD mode whose samples should be processed")
+    @Option(name = "--asd", metaVar = "asdO", usage = "IDs of the ASD modes whose samples should be processed (comma-delimited)")
     private String asdFilter;
 
     /** time point to process */
@@ -106,6 +113,10 @@ public class ProdMatrixProcessor extends BaseProcessor {
     @Option(name = "--cutoff", metaVar = "2.0", usage = "cutoff level for high-performing samples")
     private double cutoffLevel;
 
+    /** TRUE to include questionable samples */
+    @Option(name = "--all", usage = "if specified, questionable samples will be included")
+    private boolean allFlag;
+
     /** name of the input big production table */
     @Argument(index = 0, metaVar = "big_production_table.txt", usage = "input big production table", required = true)
     private File inFile;
@@ -116,13 +127,14 @@ public class ProdMatrixProcessor extends BaseProcessor {
 
     @Override
     protected void setDefaults() {
-        this.strainFilter = "M";
+        this.strainFilter = "M,7";
         this.operonFilter = "TA1";
-        this.asdFilter = "asdO";
+        this.asdFilter = "asdO,asdT";
         this.timeFilter = 24.0;
         this.iptgNegative = false;
         this.cutoffLevel = 1.2;
         this.outFormat = ProdMatrixReporter.Type.TEXT;
+        this.allFlag = false;
     }
 
     @Override
@@ -135,6 +147,9 @@ public class ProdMatrixProcessor extends BaseProcessor {
             throw new FileNotFoundException("Input file " + this.inFile + " is not found or unreadable.");
         // Create the reporter.
         this.reporter = this.outFormat.create(this.outFile);
+        // Form the strain and ASD sets.
+        this.strainSet = Arrays.stream(StringUtils.split(this.strainFilter, ',')).collect(Collectors.toSet());
+        this.asdSet = Arrays.stream(StringUtils.split(this.asdFilter, ',')).collect(Collectors.toSet());
         // Initialize the maps and things.
         this.deleteCounts = new CountMap<String>();
         this.insertCounts = new CountMap<String>();
@@ -165,7 +180,8 @@ public class ProdMatrixProcessor extends BaseProcessor {
             for (TabbedLineReader.Line line : inStream) {
                 totalCount++;
                 // Skip over bad samples.
-                if (! line.get(badCol).isEmpty())
+                String badFlag = line.get(badCol);
+                if (badFlag.contentEquals("Y") || (! this.allFlag) && badFlag.contentEquals("?"))
                     badCount++;
                 else {
                     SampleId sample = new SampleId(line.get(sampleCol));
@@ -201,7 +217,7 @@ public class ProdMatrixProcessor extends BaseProcessor {
             this.reporter.setRows(deleteProts, this.deletesFound);
             // Write the report.
             log.info("Writing output.");
-            this.reporter.closeReport(this.prodMap);
+            this.reporter.closeReport(this.prodMap, this.strainSet, this.asdSet);
         } finally {
             this.reporter.close();
         }
@@ -244,9 +260,9 @@ public class ProdMatrixProcessor extends BaseProcessor {
      * @param sample	ID of the sample to check
      */
     private boolean keepSample(SampleId sample) {
-        boolean retVal = (sample.getFragment(SampleId.STRAIN_COL).contentEquals(this.strainFilter)
+        boolean retVal = (this.strainSet.contains(sample.getFragment(SampleId.STRAIN_COL))
                 && sample.getFragment(SampleId.OPERON_COL).contentEquals(this.operonFilter)
-                && sample.getFragment(SampleId.ASD_COL).contentEquals(this.asdFilter)
+                && this.asdSet.contains(sample.getFragment(SampleId.ASD_COL))
                 && sample.getTimePoint() == this.timeFilter && sample.isIPTG() != this.iptgNegative);
         return retVal;
     }

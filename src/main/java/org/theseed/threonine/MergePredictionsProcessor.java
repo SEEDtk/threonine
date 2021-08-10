@@ -59,7 +59,7 @@ public class MergePredictionsProcessor extends BaseProcessor {
         if (! this.virtualFile.canRead())
             throw new FileNotFoundException("Virtual-sample file " + this.virtualFile + " is not found or unreadable.");
         if (! this.realFile.canRead())
-            throw new FileNotFoundException("Real-sample file " + this.virtualFile + " is not found or unreadable.");
+            throw new FileNotFoundException("Real-sample file " + this.realFile + " is not found or unreadable.");
         return true;
     }
 

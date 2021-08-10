@@ -70,12 +70,23 @@ public class GrowthData implements Comparable<GrowthData> {
      */
     public void merge(double prod, double dens, String exp, String well) {
         // The new value is good if the density is good enough.
-        boolean goodValue = (dens >= MIN_DENSITY);
+        boolean goodValue = checkDensity(dens);
         this.goodLevels.set(this.production.size(), goodValue);
         // Now add the other values.
         this.production.add(prod);
         this.density.add(dens);
         this.origins.add(exp + ":" + well);
+    }
+
+    /**
+     * This determines if we have nonzero growth.  If the growth is missing, we always consider it nonzero.
+     *
+     * @param dens	growth value to check
+     *
+     * @return TRUE if the specified growth density is nonzero
+     */
+    private static boolean checkDensity(double dens) {
+        return Double.isNaN(dens) || dens >= MIN_DENSITY;
     }
 
     /**
@@ -118,7 +129,7 @@ public class GrowthData implements Comparable<GrowthData> {
         // Get the minimum non-zero value.
         for (int i = 0; i < this.production.size(); i++) {
             double val = this.production.get(i);
-            if (this.density.get(i) > MIN_DENSITY) {
+            if (checkDensity(this.density.get(i))) {
                 if (val > 0.0) {
                     min = val;
                     xCount++;

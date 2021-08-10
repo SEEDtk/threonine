@@ -5,7 +5,9 @@ package org.theseed.reports;
 
 import java.util.Arrays;
 import java.util.BitSet;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -33,6 +35,9 @@ public abstract class MeanComputer {
         },
         TRIMEAN {
             public MeanComputer create() { return new MeanComputer.Trimean(); }
+        },
+        MAX {
+            public MeanComputer create() { return new MeanComputer.Max(); }
         };
 
         public abstract MeanComputer create();
@@ -202,5 +207,19 @@ public abstract class MeanComputer {
 
     }
 
+    /**
+     * This subclass simply takes the maximum value as the mean.
+     */
+    public static class Max extends MeanComputer {
+
+        @Override
+        public double goodMean(List<Double> nums, BitSet goodLevels) {
+            double retVal = 0.0;
+            Optional<Double> result = getGood(nums, goodLevels).stream().max(Comparator.naturalOrder());
+            if (result.isPresent())
+                retVal = result.get();
+            return retVal;
+        }
+    }
 
 }

@@ -50,6 +50,14 @@ public abstract class ProdMatrixReporter implements AutoCloseable {
             public ProdMatrixReporter create(File outFile) throws IOException {
                 return new TextProdMatrixReporter(outFile);
             }
+        },
+        EXCEL {
+
+            @Override
+            public ProdMatrixReporter create(File outFile) throws IOException {
+                return new ExcelProdMatrixReporter(outFile);
+            }
+
         };
 
         /**
@@ -174,25 +182,44 @@ public abstract class ProdMatrixReporter implements AutoCloseable {
     /**
      * Output the report.
      *
-     * @param prodMap	map of sample IDs to production values
+     * @param prodMap		map of sample IDs to production values
+     * @param strainSet		set of strains to report on
+     * @param asdSet		set of ASD modes to report on
      *
      */
-    public void closeReport(Map<SampleId, Double> prodMap) {
-        // Get an array of column headers and an array of row labels.
-        String[] columns = this.getLabels('-', this.columnMap);
-        String[] rows = this.getLabels('D', this.rowMap);
-        // Write the column headers.
-        this.writeHeaders(columns);
-        // Create the output matrix.
-        this.prodLevels = new double[rows.length][columns.length];
-        Arrays.stream(this.prodLevels).forEach(x -> Arrays.fill(x, 0.0));
-        // Loop through the production map, storing production levels.
-        for (Map.Entry<SampleId, Double> sampleEntry : prodMap.entrySet())
-            this.setValue(sampleEntry.getKey(), sampleEntry.getValue());
-        // Now we can write out the data rows.
-        for (int i = 0; i < rows.length; i++)
-            this.writeRow(rows[i], this.prodLevels[i]);
+    public void closeReport(Map<SampleId, Double> prodMap, Set<String> strainSet, Set<String> asdSet) {
+        // We produce one report for each strain/ASD combination.
+        for (String strain : strainSet) {
+            for (String asd : asdSet) {
+                // Get an array of column headers and an array of row labels.
+                String[] columns = this.getLabels('-', this.columnMap);
+                String[] rows = this.getLabels('D', this.rowMap);
+                // Write the column headers.
+                String label = strain + "_" + asd;
+                this.writeHeaders(label, columns);
+                // Create the output matrix.
+                this.prodLevels = new double[rows.length][columns.length];
+                Arrays.stream(this.prodLevels).forEach(x -> Arrays.fill(x, Double.NaN));
+                // Loop through the production map, storing production levels for this strain and mode.
+                for (Map.Entry<SampleId, Double> sampleEntry : prodMap.entrySet()) {
+                    SampleId sample = sampleEntry.getKey();
+                    if (sample.getFragment(SampleId.STRAIN_COL).contentEquals(strain) &&
+                            sample.getFragment(SampleId.ASD_COL).contentEquals(asd))
+                        this.setValue(sampleEntry.getKey(), sampleEntry.getValue());
+                }
+                // Now we can write out the data rows.
+                for (int i = 0; i < rows.length; i++)
+                    this.writeRow(rows[i], this.prodLevels[i]);
+                // Write a blank line.
+                this.skipRow();
+            }
+        }
     }
+
+    /**
+     * Skip a row of data.
+     */
+    protected abstract void skipRow();
 
     /**
      * Write a data row.
@@ -205,9 +232,10 @@ public abstract class ProdMatrixReporter implements AutoCloseable {
     /**
      * Write the column headers.
      *
+     * @param label		label for this subreport
      * @param columns	array of column headers, in order
      */
-    protected abstract void writeHeaders(String[] columns);
+    protected abstract void writeHeaders(String label, String[] columns);
 
     /**
      * Compute an array of labels (row or column) in the proper order.  The incoming map tells us the
@@ -244,6 +272,13 @@ public abstract class ProdMatrixReporter implements AutoCloseable {
     public void close() throws IOException {
         this.cleanup();
         this.outStream.close();
+    }
+
+    /**
+     * @return the output stream
+     */
+    protected OutputStream getOutStream() {
+        return this.outStream;
     }
 
 }

@@ -37,14 +37,19 @@ public class TextProdMatrixReporter extends ProdMatrixReporter {
     }
 
     @Override
-    protected void writeHeaders(String[] columns) {
-        this.writer.println("\t" + StringUtils.join(columns, '\t'));
+    protected void writeHeaders(String label, String[] columns) {
+        this.writer.println(label + "\t" + StringUtils.join(columns, '\t'));
     }
 
     @Override
     protected void writeRow(String label, double[] ds) {
         String dataLine = Arrays.stream(ds).mapToObj(x -> (Double.isNaN(x) ? "" : Double.toString(x))).collect(Collectors.joining("\t"));
         this.writer.println("D" + label + "\t" + dataLine);
+    }
+
+    @Override
+    protected void skipRow() {
+        this.writer.println();
     }
 
     @Override

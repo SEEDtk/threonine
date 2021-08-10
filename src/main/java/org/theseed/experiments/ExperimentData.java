@@ -265,7 +265,7 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
          * @return TRUE if this result is complete
          */
         public boolean isComplete() {
-            return ! Double.isNaN(this.growth) && ! Double.isNaN(this.production);
+            return ! Double.isNaN(this.production);
         }
 
         /**
