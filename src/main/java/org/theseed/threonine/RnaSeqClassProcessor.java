@@ -43,7 +43,7 @@ import org.theseed.utils.ParseFailureException;
  * -v	display more frequent log messages
  *
  * --minGood	percent of samples that must have data on a feature for it to be considered useful (default is 90)
- * --all		minimum percent quality for a sample to be considered valid (default is 40)
+ * --all		include low-quality samples
  * --filter		method for filtering features (NONE, SUBSYSTEMS, MODULONS, FILE, GROUP)
  * --sub		if specified, the name of a GTO file; only features in the GTO's subsystems will be output (filter = SUBSYSTEMS)
  * --mod		if specified, the name of a regulon/modulon file; only features in modulons will be output (filter = MODULONS)
