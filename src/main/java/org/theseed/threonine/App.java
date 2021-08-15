@@ -19,6 +19,7 @@ import org.theseed.utils.BaseProcessor;
  * expConst		look for genes with generally constant expression levels
  * diffTables	create a sample-difference table spreadsheet
  * fillPegs		add missing pegs to a tab-delimited file
+ * extract		extract certain types of samples from a master table
  *
  */
 public class App
@@ -72,6 +73,9 @@ public class App
             break;
         case "prodMatrix" :
             processor = new ProdMatrixProcessor();
+            break;
+        case "extract" :
+            processor = new ExtractProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
