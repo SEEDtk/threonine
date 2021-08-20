@@ -49,14 +49,18 @@ public class SampleDiffWorkbook {
     private CellStyle meanStyle;
     /** output file name */
     private File outFile;
+    /** minimum number of entries required per row */
+    private int minWidth;
 
     /**
      * Create the workbook.
      *
-     * @param file	output file name
+     * @param file		output file name
+     * @param minWidth 	minimum number of entries required per output row
      */
-    public SampleDiffWorkbook(File file) {
+    public SampleDiffWorkbook(File file, int minWidth) {
         this.outFile = file;
+        this.minWidth = minWidth;
         this.workbook = new XSSFWorkbook();
         // Get a data formatter.
         DataFormat format = workbook.createDataFormat();
@@ -133,18 +137,22 @@ public class SampleDiffWorkbook {
         // Save the column index for later. (Yes, this is redundant, but someday someone might accidentally
         // modify cIdx later on.)
         int nCols = cIdx;
-        // Build a row for each sample.  We reserve the first row for the mean.
+        // Build a row for each sample.  We reserve the first row for each choice's mean.
         Row meanRow = sheet.createRow(1);
         int rowNum = 2;
-        for (Map.Entry<String, List<SampleDiffTable.Entry>> sampleEntry : table.getEntries()) {
-            row = sheet.createRow(rowNum);
-            rowNum++;
-            // Put the generic sample ID in the first cell.
-            this.store(row, 0, sampleEntry.getKey(), this.headStyle);
-            // Loop through the results, placing them in the proper columns.
-            for (SampleDiffTable.Entry resultEntry : sampleEntry.getValue()) {
-                String choice = resultEntry.getChoice();
-                this.store(row, choiceMap.get(choice), resultEntry.getProduction());
+        for (String sampleId : table.getSamples()) {
+            List<SampleDiffTable.Entry> entryList = table.getSampleEntries(sampleId);
+            // We only output if the row has enough data in it for comparison.
+            if (entryList.size() >= this.minWidth) {
+                row = sheet.createRow(rowNum);
+                rowNum++;
+                // Put the generic sample ID in the first cell.
+                this.store(row, 0, sampleId, this.headStyle);
+                // Loop through the results, placing them in the proper columns.
+                for (SampleDiffTable.Entry resultEntry : entryList) {
+                    String choice = resultEntry.getChoice();
+                    this.store(row, choiceMap.get(choice), resultEntry.getProduction());
+                }
             }
         }
         // Now fill in the row for the means.

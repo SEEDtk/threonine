@@ -4,6 +4,9 @@
 package org.theseed.samples;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -11,6 +14,8 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.theseed.utils.IDescribable;
 
 /**
@@ -24,6 +29,9 @@ import org.theseed.utils.IDescribable;
 public abstract class SampleDiffTable {
 
     // FIELDS
+    /** logging facility */
+    protected static Logger log = LoggerFactory.getLogger(SampleDiffTable.class);
+
     /** table of feature mappings */
     private Map<String, List<Entry>> featureTable;
     /** set of feature choices */
@@ -180,8 +188,7 @@ public abstract class SampleDiffTable {
     }
 
     /**
-     * Add a simple-fragment sample to the table.  A simple fragment is only coded in a single fragment position,
-     * and has a scalar value rather than a subset.
+     * Add a simple-fragment sample to the table.  A simple fragment is only coded in a single fragment position.
      *
      * @param sample		ID of sample to add
      * @param fragIdx		index of variable fragment for this category
@@ -243,4 +250,55 @@ public abstract class SampleDiffTable {
     public Set<Map.Entry<String, List<Entry>>> getEntries() {
         return this.featureTable.entrySet();
     }
+
+    /**
+     * @return the list of entries for a generic sample ID (or NULL if there is none)
+     *
+     * @param sampleId	generic sample ID whose entries are desired
+     */
+    public List<Entry> getSampleEntries(String sampleId) {
+        return this.featureTable.get(sampleId);
+    }
+
+    /**
+     * @return 	the generic sample IDs in this table sorted by maximum production value (highest
+     * 			to lowest
+     */
+    public List<String> getSamples() {
+        List<String> retVal = new ArrayList<String>(this.featureTable.keySet());
+        Collections.sort(retVal, this.new IdSorter());
+        return retVal;
+    }
+
+    /**
+     * This sorts the IDs in a useful order, by maximum production value (descending)
+     */
+    private class IdSorter implements Comparator<String> {
+
+        /** map of IDs to maximum production value */
+        private Map<String, Double> idMap;
+
+        public IdSorter() {
+            this.idMap = new HashMap<String, Double>(SampleDiffTable.this.featureTable.size());
+            for (Map.Entry<String, List<Entry>> entry : SampleDiffTable.this.getEntries()) {
+                double max = 0.0;
+                for (Entry choiceEntry : entry.getValue()) {
+                    if (choiceEntry.getProduction() > max)
+                        max = choiceEntry.getProduction();
+                }
+                idMap.put(entry.getKey(), max);
+            }
+        }
+
+        @Override
+        public int compare(String o1, String o2) {
+            int retVal = Double.compare(this.idMap.get(o2), this.idMap.get(o1));
+            if (retVal == 0)
+                retVal = o1.compareTo(o2);
+            return retVal;
+        }
+
+    }
+
+
 }

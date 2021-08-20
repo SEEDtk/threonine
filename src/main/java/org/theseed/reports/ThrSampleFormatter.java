@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -220,9 +221,126 @@ public class ThrSampleFormatter {
     }
 
     /**
+     * This class iterates through the sample IDs that are one insert or delete away from the
+     * samples in the specified set.  The original samples will be returned as part of the output
+     * as well.
+     */
+    public class SampleGenerator implements Iterator<SampleId> {
+
+        // FIELDS
+        /** set of samples already produced */
+        private Set<SampleId> history;
+        /** iterator through the starting sample set */
+        private Iterator<SampleId> originalIter;
+        /** iterator through the current-sample's set */
+        private Iterator<SampleId> currentIter;
+        /** next sample ID to return */
+        private SampleId nextSample;
+        /** average number of new samples per original */
+        private int optionCount;
+
+        /**
+         * Construct a generator from a set of original samples.
+         */
+        public SampleGenerator(Set<SampleId> originals) {
+            // Compute the average number of samples per original.
+            this.optionCount = (ThrSampleFormatter.this.deleteChoices.length + 1) *
+                    (ThrSampleFormatter.this.insertChoices.length + 1);
+            // Get the iterator through the original sample set.
+            this.originalIter = originals.iterator();
+            // Initialize the history set.
+            this.history = new HashSet<SampleId>(originals.size() * this.optionCount);
+            // Prime the iteration.
+            this.setupNewOriginal();
+        }
+
+        /**
+         * Move to the next sample in the orignal set, and create an iterator through the
+         * samples generated from it.
+         */
+        private void setupNewOriginal() {
+            // We are going to loop until we run out of originals or find an original with a nonempty
+            // generated set.
+            Set<SampleId> currentSet = new HashSet<SampleId>(this.optionCount);
+            while (this.originalIter.hasNext() && currentSet.isEmpty()) {
+                // Get the next sample to use as a base.
+                SampleId original = this.originalIter.next();
+                // Prime it with the original.
+                this.generateDeletes(original, currentSet);
+                // Create samples by inserting.
+                for (String insert : ThrSampleFormatter.this.insertChoices) {
+                    SampleId iSample = original.addInsert(insert);
+                    this.generateDeletes(iSample, currentSet);
+                }
+            }
+            // Did we find a set?
+            if (currentSet.isEmpty()) {
+                // No.  We are done.
+                this.nextSample = null;
+            } else {
+                // Get an iterator through it.
+                this.currentIter = currentSet.iterator();
+                // Prime with the first sample.
+                this.nextSample = this.currentIter.next();
+            }
+        }
+
+        /**
+         * Add the specified original to the current set, then add all samples formed by deleting an
+         * additional protein.
+         *
+         * @param original		original sample to use as a starting point
+         * @param currentSet	current set being built
+         */
+        private void generateDeletes(SampleId original, Set<SampleId> currentSet) {
+            // Prime with the original sample.
+            this.checkSample(original, currentSet);
+            // Create samples by deleting.
+            Arrays.stream(ThrSampleFormatter.this.deleteChoices).map(x -> original.addDelete(x))
+                    .forEach(x -> this.checkSample(x, currentSet));
+        }
+
+        /**
+         * Verify that a sample is new, and if it is, add it to the current set.
+         *
+         * @param sample	ID of the proposed sample
+         * @param currSet	current sample set
+         */
+        private void checkSample(SampleId sample, Set<SampleId> currSet) {
+            if (! this.history.contains(sample)) {
+                currSet.add(sample);
+                this.history.add(sample);
+            }
+        }
+        @Override
+        public boolean hasNext() {
+            return this.nextSample != null;
+        }
+        @Override
+        public SampleId next() {
+            if (this.nextSample == null)
+                throw new NoSuchElementException("Attempt to iterate past last generated sample ID.");
+            // Get the next sample.
+            SampleId retVal = this.nextSample;
+            // Set up for the sample after this one.
+            if (this.currentIter.hasNext()) {
+                // There is more in the current set, so keep going.
+                this.nextSample = this.currentIter.next();
+            } else {
+                // Current set is empty, so start the new one.
+                this.setupNewOriginal();
+            }
+            return retVal;
+        }
+
+
+    }
+
+
+    /**
      * This class iterates through all the possible sample IDs.
      */
-    public class SampleIterator implements Iterator<String> {
+    public class SampleIterator implements Iterator<SampleId> {
 
         // FIELDS
         /** positions in the different choices for the next item-- base, deletes, IPTG, TIME, MEDIUM */
@@ -272,7 +390,7 @@ public class ThrSampleFormatter {
         }
 
         @Override
-        public String next() {
+        public SampleId next() {
             if (this.done) {
                 // End-of-list error.
                 throw new NoSuchElementException("Attempt to iterate past last sample ID.");
@@ -311,7 +429,7 @@ public class ThrSampleFormatter {
             // If there is no next sample, insure hasNext() fails.
             if (! found) done = true;
             // Return the sample ID.
-            return retVal.toString();
+            return new SampleId(retVal.toString());
         }
 
         /**

@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -15,6 +16,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.io.LineReader;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.samples.SampleId;
 import org.theseed.utils.BaseProcessor;
@@ -37,8 +39,9 @@ import org.theseed.utils.SetUtils;
  * -h	display command-line usage
  * -v	display more frequent log messages
  * -i	name of input file (if not standard input)
- * -x	comma-delimited list of sample sets to exclude from output (default none)
- * -n	comma-delimited list of sample sets to include in output (default all)
+ * -x	name of a file containing a list of sample sets to exclude from output, one per line (default none)
+ * -n	name of a file containing the list of sample sets to include in output, one per line (default all);
+ * 		samples which only occurred in the specified sets will be included; all others will be excluded
  *
  * --strains	comma-delimited list of strains to include (default "7,M")
  * --opr		comma-delimited list of operon codes to include (default all)
@@ -77,12 +80,12 @@ public class ExtractProcessor extends BaseProcessor {
     private File inFile;
 
     /** comma-delimited list of sample sets to include (NULL for all) */
-    @Option(name = "--setsIn", aliases = { "-n" }, usage = "comma-delimited list of sample sets to include (default is all)")
-    private String setsInList;
+    @Option(name = "--setsIn", aliases = { "-n" }, usage = "list of sample sets to include (default is all)")
+    private File setsInFile;
 
     /** comma-delimited list of sample sets to exclude (NULL for all) */
-    @Option(name = "--setsOut", aliases = { "-x" }, usage = "comma-delimited list of sample sets to exclude (default is none)")
-    private String setsOutList;
+    @Option(name = "--setsOut", aliases = { "-x" }, usage = "list of sample sets to exclude (default is none)")
+    private File setsOutFile;
 
     /** comma-delimited list of strains to include */
     @Option(name = "--strains", metaVar = "M", usage = "command-delimited list of strains to extract")
@@ -112,19 +115,34 @@ public class ExtractProcessor extends BaseProcessor {
     protected void setDefaults() {
         this.inFile = null;
         this.strainList = "7,M";
-        this.setsOutList = "";
+        this.setsOutFile = null;
         this.timePointsList = null;
         this.pureFlag = false;
         this.iptgOnly = false;
         this.oprList = null;
         this.asdList = null;
-        this.setsInList = null;
+        this.setsInFile = null;
     }
 
     @Override
     protected boolean validateParms() throws IOException, ParseFailureException {
-        // Process the exclude filter and the strain list.
-        this.sampleSetsOut = SetUtils.newFromArray(StringUtils.split(this.setsOutList, ','));
+        // Process the exclude filter.
+        if (this.setsOutFile == null) {
+            log.info("No sample sets will be excluded.");
+            this.sampleSetsOut = Collections.emptySet();
+        } else {
+            this.sampleSetsOut = LineReader.readSet(this.setsOutFile);
+            log.info("{} sample sets will be excluded.", this.sampleSetsOut.size());
+        }
+        // Process the include filter.
+        if (this.setsInFile == null) {
+            log.info("All sample sets will be included.");
+            this.sampleSetsIn = null;
+        } else {
+            this.sampleSetsIn = LineReader.readSet(this.setsInFile);
+            log.info("{} sample sets will be included.", this.sampleSetsIn.size());
+        }
+        // Process the strains.
         this.strainsIn = SetUtils.newFromArray(StringUtils.split(this.strainList, ','));
         // Process the time points.
         if (this.timePointsList != null) {
@@ -136,7 +154,6 @@ public class ExtractProcessor extends BaseProcessor {
         // Process the other filters.
         this.operonsIn = this.buildSet(this.oprList);
         this.asdIn = this.buildSet(this.asdList);
-        this.sampleSetsIn = this.buildSet(this.setsInList);
         // Finally, open the input stream.
         if (this.inFile == null) {
             log.info("Reading from standard input.");
@@ -171,7 +188,7 @@ public class ExtractProcessor extends BaseProcessor {
                 String sampleId = line.get(sampleCol);
                 String badFlag = line.get(badCol);
                 // Check the bad-flag first.
-                if (badFlag.isEmpty() || ! this.pureFlag && badFlag.contentEquals("?"))
+                if (! badFlag.isEmpty() && (this.pureFlag || badFlag.contentEquals("Y")))
                     badCount++;
                 else {
                     // Parse the origin.
@@ -179,7 +196,7 @@ public class ExtractProcessor extends BaseProcessor {
                     Set<String> origins = Arrays.stream(StringUtils.split(originString, ", "))
                             .map(x -> StringUtils.substringBefore(x, ":")).collect(Collectors.toSet());
                     if (SetUtils.containsAny(origins, this.sampleSetsOut) ||
-                            (this.sampleSetsIn != null && SetUtils.containsAny(origins, this.sampleSetsIn)))
+                            (this.sampleSetsIn != null && ! this.sampleSetsIn.containsAll(origins)))
                         originCount++;
                     else if (this.isIncluded(new SampleId(sampleId))) {
                         // Here we are keeping the sample.

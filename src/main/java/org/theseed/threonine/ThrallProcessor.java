@@ -21,6 +21,7 @@ import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.io.LineReader;
+import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.ThrSampleFormatter;
 import org.theseed.samples.SampleId;
 import org.theseed.utils.BaseProcessor;
@@ -43,6 +44,8 @@ import org.theseed.utils.ParseFailureException;
  * --filter		type of filter to apply
  * --maxD		for filter type LOW_COST, the maximum number of deletes
  * --maxI		for filter type LOW_COST, the maximum number of inserts
+ * --originals	if specified, the name of a tab-delimited file containing sample IDs in a column named "sample";
+ * 				samples generated will be at most one insert and/or delete away from the samples in this file
  *
  * @author Bruce Parrello
  *
@@ -62,6 +65,8 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
     private boolean[] keep;
     /** filter to apply */
     private SampleFilter filter;
+    /** set of original samples, or NULL if none specified */
+    private Set<SampleId> originals;
 
     /**
      * Enumerator for delimiters
@@ -98,6 +103,10 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
     @Option(name = "--maxI", metaVar = "2", usage = "maximum number of inserts (if filtered)")
     private int maxInserts;
 
+    /** original-sample file (in specified) */
+    @Option(name = "--originals", metaVar = "big_production_master.tbl", usage = "if specified, a file of original samples to modify with inserts and deletes")
+    private File originalFile;
+
     /** model directory */
     @Argument(index = 0, metaVar = "modelDir", usage = "directory containing the target model", required = true)
     private File modelDir;
@@ -115,6 +124,7 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
         this.delimiter = Delim.TAB;
         this.filterType = SampleFilter.Type.NONE;
         this.maxDeletes = 3;
+        this.originalFile = null;
     }
 
     @Override
@@ -132,9 +142,21 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
             // Determine the names of the headers we need.
             this.trainingHeaders = new TreeSet<String>(Arrays.asList(StringUtils.split(headers, '\t')));
         }
+        if (this.originalFile == null) {
+            // Here we are doing an exhaustive generation.
+            this.originals = null;
+        } else {
+            // Here we must generate by modifying input samples.
+            Set<String> stringSet = TabbedLineReader.readSet(this.originalFile, "sample");
+            this.originals = stringSet.stream().map(x -> new SampleId(x)).collect(Collectors.toSet());
+            log.info("{} original samples found in file {}.", this.originals.size(), this.originalFile);
+        }
         // Verify the max deletes.
         if (this.maxDeletes < 0)
             throw new ParseFailureException("Delete limit cannot be negative.");
+        // Verify the max inserts.
+        if (this.maxInserts < 0)
+            throw new ParseFailureException("Insert limit cannot be negative.");
         // Create the filter.
         this.filter = this.filterType.create(this);
         return true;
@@ -158,13 +180,21 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
             // Write the output header.
             writer.println("sample_id" + this.delim +
                     StringUtils.join(this.keepers(this.formatter.getTitles()), this.delim));
+            // Get an iterator through the samples we want.
+            Iterator<SampleId> iter;
+            if (this.originals == null) {
+                log.info("Performing an exhaustive iteration.");
+                iter = this.formatter.new SampleIterator();
+            } else {
+                log.info("Generating new sample IDs from old ones.");
+                iter = this.formatter.new SampleGenerator(this.originals);
+            }
             // Iterate through the sample IDs.
             log.info("Computing sample IDs.");
             int processed = 0;
-            Iterator<String> iter = this.formatter.new SampleIterator();
             while (iter.hasNext()) {
-                String sampleId = iter.next();
-                SampleId sample = new SampleId(sampleId);
+                SampleId sample = iter.next();
+                String sampleId = sample.toString();
                 // Apply the filter.
                 if (this.filter.acceptable(sample)) {
                     // Check the insert and delete possibilities to make sure they are supported.
