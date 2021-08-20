@@ -42,6 +42,8 @@ public class GrowthData implements Comparable<GrowthData> {
     public static MeanComputer MEAN_COMPUTER = new MeanComputer.Sigma(2);
     /** minimum acceptable density */
     public static double MIN_DENSITY = 0.1;
+    /** alert level */
+    public static double ALERT_LEVEL = 1.2;
 
     /**
      * Create a blank growth-data object.
@@ -150,13 +152,65 @@ public class GrowthData implements Comparable<GrowthData> {
     }
 
     /**
+     * Flag the minimum or maximum production level as bad if it is out of range.
+     *
+     * @param alertRange	maximum allowable production range
+     *
+     * @return TRUE if the range is good when we're done, else FALSE
+     */
+    public boolean removeOutlier(double alertRange) {
+        boolean retVal = false;
+        // We need at least three values for this to be practical.
+        int n = this.production.size();
+        // Remember the extreme values and their locations.
+        double min = Double.POSITIVE_INFINITY;
+        int minI = 0;
+        double max = Double.NEGATIVE_INFINITY;
+        int maxI = 0;
+        for (int i = 0; i < n; i++) {
+            if (this.goodLevels.get(i)) {
+                double val = this.production.get(i);
+                if (val > max) {
+                    max = val;
+                    maxI = i;
+                }
+                if (val < min) {
+                    min = val;
+                    minI = i;
+                }
+            }
+        }
+        if (max - min <= alertRange)
+            retVal = true;
+        else if (n >= 3) {
+            // We have exceeded the acceptable range, but there might be an outlier.
+            // Count the number of outliers with respect to the min and max.
+            int veryLow = 0;
+            int veryHigh = 0;
+            for (int i = 0; i < n; i++) {
+                if (max - this.production.get(i) > alertRange) veryLow++;
+                if (this.production.get(i) - min > alertRange) veryHigh++;
+            }
+            // If only one value is out of range, remove it and denote we're ok.
+            if (veryHigh == 1 && veryLow > 1) {
+                this.goodLevels.clear(maxI);
+                retVal = true;
+            } else if (veryHigh > 1 && veryLow == 1) {
+                this.goodLevels.clear(minI);
+                retVal = true;
+            }
+        }
+        return retVal;
+    }
+
+    /**
      * @return the normalized production
      */
     public double getNormalizedProduction() {
-        List<Double> norms = IntStream.range(0, this.production.size())
-                .filter(i -> this.goodLevels.get(i)).mapToObj(i -> this.production.get(i) / this.density.get(i))
-                .collect(Collectors.toList());
         double retVal = 0.0;
+        List<Double> norms = IntStream.range(0, this.production.size())
+                .filter(i -> this.goodLevels.get(i) && Double.isFinite(this.density.get(i)))
+                .mapToObj(i -> this.production.get(i) / this.density.get(i)).collect(Collectors.toList());
         if (norms.size() > 0)
             retVal = MEAN_COMPUTER.goodMean(norms, this.goodLevels);
         return retVal;

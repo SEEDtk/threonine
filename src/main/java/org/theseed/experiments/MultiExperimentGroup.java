@@ -57,7 +57,7 @@ public class MultiExperimentGroup extends ExperimentGroup {
     /** pattern for IPTG line */
     private static final Pattern IPTG_LINE = Pattern.compile("IPTG\\s+(.+)");
     /** pattern for plate ID line */
-    private static final Pattern PLATE_LINE = Pattern.compile("Layout for set (\\S+)\\.?");
+    private static final Pattern PLATE_LINE = Pattern.compile("Layout for set (\\S+)");
     /** pattern for non-ASCII characters */
     private static final Pattern BAD_CHARS = Pattern.compile("[^\\x00-\\x7F]");
     /** pattern for parsing time point from growth file name */
@@ -138,7 +138,7 @@ public class MultiExperimentGroup extends ExperimentGroup {
                     } else {
                         m = PLATE_LINE.matcher(line);
                         if (m.matches()) {
-                            plate = m.group(1);
+                            plate = StringUtils.removeEnd(m.group(1), ".");
                             this.createExperiment(plate);
                             log.info("Layout for experiment plate {}.", plate);
                         } else {
@@ -237,7 +237,9 @@ public class MultiExperimentGroup extends ExperimentGroup {
     @Override
     protected ExperimentGroup.SampleDesc parseSampleName(String data) {
         ExperimentGroup.SampleDesc retVal = null;
-        Matcher m = SAMPLE_NAME.matcher(data);
+        // Sometimes there is a "plate" prefix we have to remove.
+        String trimmed = StringUtils.removeStart(data, "PLATE ");
+        Matcher m = SAMPLE_NAME.matcher(trimmed);
         if (m.matches()) {
             // Trim the time from the set ID (if any).
             String setId = m.group(1);

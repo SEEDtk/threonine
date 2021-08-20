@@ -245,33 +245,35 @@ public class ThrFixProcessor extends BaseProcessor {
         log.info("{} rows were missing growth or production numbers, {} input rows were suspect, and {} were good.",
                 badNumRows, badSampleRows, keptRows);
         log.info("{} good rows had no production.", zeroProdRows);
+        // Analyze the good data.
+        int qCount = 0;
+        int aCount = 0;
+        int gCount = 0;
+        for (GrowthData growth : this.growthMap.values()) {
+            // Fix any zero outliers.
+            growth.removeBadZeroes(this.alertRange);
+            // Check the alert range.
+            boolean ok = growth.removeOutlier(this.alertRange);
+            if (! ok) {
+                growth.setSuspicious();
+                aCount++;
+            } else if (growth.isSuspicious()) {
+                qCount++;
+            } else
+                gCount++;
+        }
         // Now we need to organize the samples by strain and look for threshold anomalies.
         this.checkThresholds();
+        // Write the results.
         log.info("Producing output to {}.", this.outFile);
         try (PrintWriter writer = new PrintWriter(this.outFile)) {
             writer.println("num\told_strain\tsample\tthr_production\tgrowth\tbad\tthr_normalized\tthr_rate\torigins\traw_productions");
-            // Write the good data.
             int num = 0;
-            int qCount = 0;
-            int aCount = 0;
-            int gCount = 0;
             for (Map.Entry<SampleId, GrowthData> sampleEntry : this.growthMap.entrySet()) {
                 SampleId sampleId = sampleEntry.getKey();
-                GrowthData growth = sampleEntry.getValue();
-                num++;
-                // Fix any zero outliers.
-                growth.removeBadZeroes(this.alertRange);
-                // Check the alert range.
-                double range = growth.getProductionRange();
-                String qFlag = "";
-                if (range > this.alertRange) {
-                    qFlag = "?";
-                    aCount++;
-                } else if (growth.isSuspicious()) {
-                    qFlag = "?";
-                    qCount++;
-                } else
-                    gCount++;
+                    GrowthData growth = sampleEntry.getValue();
+                    num++;
+                String qFlag = (growth.isSuspicious() ? "?" : "");
                 writeSampleData(writer, num, sampleId, growth, qFlag);
             }
             log.info("{} good samples output, {} failed the alert check, {} were questionable.", gCount, aCount, qCount);
@@ -329,10 +331,24 @@ public class ThrFixProcessor extends BaseProcessor {
      * @param badFlag	"Y" if bad, "" if good, "?" if questionable
      */
     private void writeSampleData(PrintWriter writer, int num, SampleId sampleId, GrowthData growth, String badFlag) {
-        writer.format("%d\t%s\t%s\t%1.9f\t%1.2f\t%s\t%1.9f\t%1.9f\t%s\t%s%n",
-                num, growth.getOldStrain(), sampleId.toString(), growth.getProduction(), growth.getDensity(),
+        writer.format("%d\t%s\t%s\t%1.9f\t%s\t%s\t%1.9f\t%1.9f\t%s\t%s%n",
+                num, growth.getOldStrain(), sampleId.toString(), growth.getProduction(), format(growth.getDensity(), "%1.2f"),
                 badFlag, growth.getNormalizedProduction(), growth.getProductionRate(), growth.getOrigins(),
                 growth.getProductionList());
     }
 
+    /**
+     * This function formats a double-precision to a string.  If the value is NaN, it returns the empty string.
+     *
+     * @param num		number to format
+     * @param fmt		format to apply
+     */
+    public static String format(double num, String fmt) {
+        String retVal;
+        if (Double.isNaN(num))
+            retVal = "";
+        else
+            retVal = String.format(fmt, num);
+        return retVal;
+    }
 }
