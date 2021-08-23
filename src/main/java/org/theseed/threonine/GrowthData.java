@@ -113,7 +113,14 @@ public class GrowthData implements Comparable<GrowthData> {
      * @return the origin string
      */
     public String getOrigins() {
-        return StringUtils.join(this.origins, ", ");
+        String[] originStrings = new String[this.origins.size()];
+        for (int i = 0; i < this.origins.size(); i++) {
+            if (this.goodLevels.get(i))
+                originStrings[i] = this.origins.get(i);
+            else
+                originStrings[i] = "(" + this.origins.get(i) + ")";
+        }
+        return StringUtils.join(originStrings, ", ");
     }
 
     /**
@@ -229,8 +236,13 @@ public class GrowthData implements Comparable<GrowthData> {
      * @return a displayable list of production values
      */
     public String getProductionList() {
-        return IntStream.range(0, this.production.size()).mapToDouble(i -> this.production.get(i))
-                .mapToObj(f -> StringUtils.trim(String.format("%6.4f", f))).collect(Collectors.joining(","));
+        String[] productions = new String[this.production.size()];
+        for (int i = 0; i < this.production.size(); i++) {
+            productions[i] = String.format("%6.4f", this.production.get(i));
+            if (! this.goodLevels.get(i))
+                productions[i] = "(" + productions[i] + ")";
+        }
+        return StringUtils.join(productions, ',');
     }
 
     /**

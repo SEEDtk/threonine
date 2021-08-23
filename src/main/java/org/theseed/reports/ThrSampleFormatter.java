@@ -81,7 +81,10 @@ public class ThrSampleFormatter {
             for (int i = 0; i < n; i++) {
                 String line = reader.next();
                 // Delete any present null case.
-                String newLine = line.substring(StringUtils.indexOfAnyBut(line, " ,0"));
+                int begin = StringUtils.indexOfAnyBut(line, " ,0");
+                if (begin < 0)
+                    throw new IOException(String.format("Invalid choice line #%d in %s.", i+1, choiceFile));
+                String newLine = line.substring(begin);
                 // Get all the choices.
                 String[] choiceArray = this.parseChoiceLine(newLine);
                 this.numCols += choiceArray.length;
