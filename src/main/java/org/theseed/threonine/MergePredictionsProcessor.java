@@ -21,7 +21,9 @@ import org.theseed.utils.ParseFailureException;
  * This method reads a predictions file containing both predicted and expected threonine data and a prediction file of virtual
  * samples containing only sample IDs and predictions.  The expected data will be added to samples for which it is available.
  * This cannot be done with a text-based join, since multiple sample IDs can represent the same sample.
- * The positional parameters are the name of the virtual-sample prediction file and the name of the real-sample prediction file.
+ * The positional parameters are the name of the virtual-sample prediction file and the name of the real-sample prediction file
+ * (the big production table).
+ *
  * The output will be to the standard output.
  *
  * The command-line options are as follows:
@@ -68,9 +70,9 @@ public class MergePredictionsProcessor extends BaseProcessor {
         // Read the real-sample file into a map.
         this.realMap = new HashMap<SampleId, String>(4000);
         try (TabbedLineReader realStream = new TabbedLineReader(this.realFile)) {
-            int sampleCol = realStream.findField("sample_id");
-            int densityCol = realStream.findField("density");
-            int prodCol = realStream.findField("production");
+            int sampleCol = realStream.findField("sample");
+            int densityCol = realStream.findField("growth");
+            int prodCol = realStream.findField("thr_production");
             for (TabbedLineReader.Line line : realStream) {
                 SampleId sample = new SampleId(line.get(sampleCol));
                 String density = line.get(densityCol);
