@@ -95,8 +95,8 @@ public class RnaSeqCorrespondenceProcessor extends RnaSeqBaseProcessor {
                 if (fidArray.getN() <= minElements)
                     log.warn("Too few points for a valid correlation on {}.", fidName);
                 else {
-                    double corr = correlator.correlation(fidArray.getValues(), thrArray.getElements());
-                    double pCorr = pCorrelator.correlation(fidArray.getValues(), thrArray.getElements());
+                    double corr = correlator.correlation(thrArray.getElements(), fidArray.getValues());
+                    double pCorr = pCorrelator.correlation(thrArray.getElements(), fidArray.getValues());
                     double mean = fidArray.getMean();
                     double sdev = fidArray.getStandardDeviation();
                     double median = fidArray.getPercentile(50.0);
