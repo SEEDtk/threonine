@@ -46,6 +46,11 @@ public abstract class SampleFilter {
          */
         public int getMaxInserts();
 
+        /**
+         * @return TRUE if plasmid operons are allowed
+         */
+        public boolean getPlasmidFlag();
+
     }
 
     /**

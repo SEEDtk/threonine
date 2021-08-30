@@ -19,17 +19,20 @@ public class LowCostSampleFilter extends SampleFilter {
     private int maxDeletes;
     /** maximum nubmer of inserts */
     private int maxInserts;
+    /** TRUE to allow plasmid operons */
+    private boolean plasmidFlag;
 
     public LowCostSampleFilter(IParms processor) {
         super(processor);
         this.maxDeletes = processor.getMaxDeletes();
         this.maxInserts = processor.getMaxInserts();
+        this.plasmidFlag = processor.getPlasmidFlag();
     }
 
     @Override
     public boolean acceptable(SampleId sample) {
         boolean retVal = true;
-        if (sample.getFragment(3).contentEquals("P"))
+        if (! this.plasmidFlag &&  sample.getFragment(3).contentEquals("P"))
             retVal = false;
         else if (sample.getDeletes().size() > this.maxDeletes)
             retVal = false;

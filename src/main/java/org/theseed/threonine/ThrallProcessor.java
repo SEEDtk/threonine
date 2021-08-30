@@ -46,6 +46,7 @@ import org.theseed.utils.ParseFailureException;
  * --maxI		for filter type LOW_COST, the maximum number of inserts
  * --originals	if specified, the name of a tab-delimited file containing sample IDs in a column named "sample";
  * 				samples generated will be at most one insert and/or delete away from the samples in this file
+ * --plasmids	if specified, plasmid threonine operons are allowed for filter type LOW_COST
  *
  * @author Bruce Parrello
  *
@@ -103,6 +104,10 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
     @Option(name = "--maxI", metaVar = "2", usage = "maximum number of inserts (if filtered)")
     private int maxInserts;
 
+    /** if specified, plasmids are allowed in low-cost output */
+    @Option(name = "--plasmids", usage = "allow plasmid operons (if filtered)")
+    private boolean plasmidFlag;
+
     /** original-sample file (in specified) */
     @Option(name = "--originals", metaVar = "big_production_master.tbl", usage = "if specified, a file of original samples to modify with inserts and deletes")
     private File originalFile;
@@ -124,6 +129,8 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
         this.delimiter = Delim.TAB;
         this.filterType = SampleFilter.Type.NONE;
         this.maxDeletes = 3;
+        this.maxInserts = 1;
+        this.plasmidFlag = false;
         this.originalFile = null;
     }
 
@@ -233,6 +240,11 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
     @Override
     public int getMaxInserts() {
         return this.maxInserts;
+    }
+
+    @Override
+    public boolean getPlasmidFlag() {
+        return this.plasmidFlag;
     }
 
 }
