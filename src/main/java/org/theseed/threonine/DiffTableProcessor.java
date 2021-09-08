@@ -58,7 +58,7 @@ public class DiffTableProcessor extends BaseProcessor {
     // COMMAND-LINE OPTIONS
 
     /** all-samples flag */
-    @Option(name = "--all", usage = "if specified, bad and questionable samples will be included")
+    @Option(name = "--all", usage = "if specified, questionable samples will be included")
     private boolean allFlag;
 
     /** desired time point */
