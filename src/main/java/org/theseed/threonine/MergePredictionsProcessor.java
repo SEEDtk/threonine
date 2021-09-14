@@ -12,24 +12,27 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.io.LineReader;
 import org.theseed.io.TabbedLineReader;
-import org.theseed.io.TabbedLineReader.Line;
 import org.theseed.samples.SampleId;
 import org.theseed.utils.BaseReportProcessor;
 import org.theseed.utils.ParseFailureException;
 
 /**
- * This method reads a predictions file containing both predicted and expected threonine data and a prediction file of virtual
- * samples containing only sample IDs and predictions.  The expected data will be added to samples for which it is available.
- * This cannot be done with a text-based join, since multiple sample IDs can represent the same sample.
- * The positional parameters are the name of the virtual-sample prediction file and the name of the real-sample prediction file
+ * This method reads a predictions file containing both predicted and expected threonine data and a
+ * prediction file of virtualsamples containing only sample IDs and predictions.  The expected data
+ * will be added to samples for which it is available.  This cannot be done with a text-based join,
+ * since multiple sample IDs can represent the same sample.  The positional parameters are the name
+ * of the virtual-sample prediction file and the name of the real-sample prediction file
  * (the big production table).
  *
  * The output will be to the standard output.
@@ -43,8 +46,10 @@ import org.theseed.utils.ParseFailureException;
  * -a	name of the file for the analysis report (default "analysis.txt"
  * -o	name of output file (if not STDOUT)
  *
- * --pure	exclude questionable samples from the output
- * --super	cutoff level for super-high samples  (default 4.0)
+ * --pure		exclude questionable samples from the output
+ * --super		cutoff level for super-high samples  (default 4.0)
+ * --plates		name of a file containing plate IDs; samples that only contain plates from
+ * 				this list will be considered last-run or new
  *
  * @author Bruce Parrello
  *
@@ -56,6 +61,8 @@ public class MergePredictionsProcessor extends BaseReportProcessor {
     protected static Logger log = LoggerFactory.getLogger(MergePredictionsProcessor.class);
     /** set of training samples */
     private Set<SampleId> trainingSet;
+    /** set of recent-sample plate IDs */
+    private Set<String> plateSet;
     /** confusion matrix [low, high] with actual as first index */
     private final int[][] matrix = new int[][] { { 0, 0 }, { 0, 0 }, { 0, 0 }};
     /** confusion matrix for last-run-only samples */
@@ -66,6 +73,8 @@ public class MergePredictionsProcessor extends BaseReportProcessor {
     private final static String[] LEVELS = new String[] { "Low", "High" };
     /** expected number of samples */
     private static final int EXPECTED_SAMPLES = 4000;
+    /** sample plate extraction pattern; group 1 is the plate, group 2 is the well */
+    public static final Pattern PLATE_AND_WELL = Pattern.compile("\\(?([^:]+):([A-Z]\\d+)\\)?");
 
     // COMMAND-LINE OPTIONS
 
@@ -85,8 +94,12 @@ public class MergePredictionsProcessor extends BaseReportProcessor {
     @Option(name = "--super", metaVar = "6.0", usage = "cutoff level for super-high samples")
     private double superLevel;
 
+    /** recent-plate file */
+    @Option(name = "--plates", metaVar = "plateList.txt", usage = "file containing last-run plate IDs")
+    private File plateFile;
+
     /** name of analysis report file */
-    @Option(name = "--analysis", metaVar = "report.txt", usage = "name of output file for analysis report")
+    @Option(name = "--analysis", aliases = { "-a" }, metaVar = "report.txt", usage = "name of output file for analysis report")
     private  File analysisFile;
 
     /** input virtual-sample file */
@@ -104,6 +117,7 @@ public class MergePredictionsProcessor extends BaseReportProcessor {
         this.superLevel = 4.0;
         this.analysisFile = new File(System.getProperty("user.dir"), "analysis.txt");
         this.pureFlag = false;
+        this.plateFile = null;
     }
 
     @Override
@@ -116,8 +130,6 @@ public class MergePredictionsProcessor extends BaseReportProcessor {
             throw new ParseFailureException("Cutoff level must be positive.");
         if (this.superLevel <= this.cutoffLevel)
             throw new ParseFailureException("Super level must be greater than cutoff level.");
-        if (! this.analysisFile.getParentFile().isDirectory())
-            throw new FileNotFoundException("Analysis file " + this.analysisFile + " is not in a valid directory.");
         if (this.trainFile == null)
             this.trainingSet = Collections.emptySet();
         else if (! this.trainFile.canRead())
@@ -126,6 +138,16 @@ public class MergePredictionsProcessor extends BaseReportProcessor {
             // We have a training-set file, so we can create the training set.
             this.trainingSet = LineReader.readSet(this.trainFile).stream().map(x -> new SampleId(x))
                     .collect(Collectors.toSet());
+            log.info("{} sample IDs found in training set.", this.trainingSet.size());
+        }
+        if (this.plateFile == null)
+            this.plateSet = Collections.emptySet();
+        else if (! this.plateFile.canRead())
+            throw new FileNotFoundException("Plate-set file " + this.plateFile + " is not found or unreadable.");
+        else {
+            // We have a plate file, so we can create the set of last-run plates.
+            this.plateSet = LineReader.readSet(this.plateFile);
+            log.info("{} plate IDs found in plate set.", this.plateSet.size());
         }
     }
 
@@ -148,9 +170,8 @@ public class MergePredictionsProcessor extends BaseReportProcessor {
             int sampleCol = realStream.findField("sample");
             int densityCol = realStream.findField("growth");
             int prodCol = realStream.findField("thr_production");
-            int baseCol = realStream.findField("base");
+            int originCol = realStream.findField("origins");
             int badCol = realStream.findField("bad");
-            int numCols = realStream.size();
             for (TabbedLineReader.Line line : realStream) {
                 // Skip this line if it is bad.
                 String badFlag = line.get(badCol);
@@ -165,7 +186,7 @@ public class MergePredictionsProcessor extends BaseReportProcessor {
                     double prod = line.getDouble(prodCol);
                     int level = this.computeLevel(prod);
                     // Figure out if this sample is new.
-                    boolean newFlag = this.computeNew(line, baseCol, numCols);
+                    boolean newFlag = this.computeNew(line.get(originCol));
                     if (newFlag)
                         newSamples.add(sample);
                     // Figure out if this sample is super-high.
@@ -286,20 +307,28 @@ public class MergePredictionsProcessor extends BaseReportProcessor {
     }
 
     /**
-     * @return TRUE if the current sample is exclusive to the last run (new), else FALSE
+     * @return TRUE if the current sample is exclusive to the run identified by the plate set, else FALSE
      *
-     * @param line		input line
-     * @param baseCol	column for base run; all subsequent columns are from later runs
-     * @param numCols	the total number of columns in a line
+     * @param origins	origin string for this sample
+     *
+     * @throws IOException
      *
      */
-    private boolean computeNew(Line line, int baseCol, int numCols) {
-        int newCol = numCols - 1;
-        // Was this sample in the new run at all?
-        boolean retVal = line.getFlag(newCol);
-        // Loop until we find a counter-indication.
-        for (int i = baseCol; retVal && i < newCol; i++) {
-            if (line.getFlag(i)) retVal = false;
+    private boolean computeNew(String origins) throws IOException {
+        // If the plate set is empty, everything is old (FALSE).  Otherwise, we assume TRUE until
+        // proven otherwise.
+        boolean retVal = ! this.plateSet.isEmpty();
+        String[] originList = StringUtils.split(origins, ',');
+        // Loop through the origin specs until we find an old plate.
+        for (int i = 0; retVal && i < originList.length; i++) {
+            Matcher m = PLATE_AND_WELL.matcher(originList[i]);
+            if (! m.matches())
+                throw new IOException("Invalid origin specifier \"" + origins +
+                        "\" in production table.");
+            else {
+                String plate = m.group(1);
+                retVal = this.plateSet.contains(plate);
+            }
         }
         return retVal;
     }
