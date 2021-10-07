@@ -54,6 +54,17 @@ public abstract class MeanComputer {
     public abstract double goodMean(List<Double> nums, BitSet goodLevels);
 
     /**
+     * Compute an error-corrected mean for a set of good numbers.
+     *
+     * @param nums			list of input numbers
+     *
+     * @return the bias-corrected mean
+     */
+    public double goodMean(List<Double> nums) {
+        return goodMean(nums, null);
+    }
+
+    /**
      * @return a list of the good values in the specified list
      *
      * @param nums			list of input numbers

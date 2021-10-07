@@ -20,6 +20,8 @@ import org.theseed.utils.BaseProcessor;
  * diffTables	create a sample-difference table spreadsheet
  * fillPegs		add missing pegs to a tab-delimited file
  * extract		extract certain types of samples from a master table
+ * sugarFix		compute glucose utilization level from a spreadsheet directory
+ * sugarMerge	merge glucose data into the big production table
  *
  */
 public class App
@@ -76,6 +78,12 @@ public class App
             break;
         case "extract" :
             processor = new ExtractProcessor();
+            break;
+        case "sugarFix" :
+            processor = new SugarUtilizationProcessor();
+            break;
+        case "sugarMerge" :
+            processor = new SugarMergeProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
