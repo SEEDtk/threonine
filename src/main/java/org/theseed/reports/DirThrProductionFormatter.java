@@ -12,7 +12,7 @@ import org.theseed.io.MarkerFile;
 
 /**
  * This formatter creates a full machine learning directory for the "dl4j.jfx" application.  This includes a header-only
- * "training.tbl" file, a "data.tbl" file with the full training/testing set, and a "labels.txt" with the "production" label.
+ * "training.tbl" file, a "data.tbl" file with the full training/testing set, and a "labels.txt" with the production label.
  *
  * @author Bruce Parrello
  *
@@ -36,9 +36,15 @@ public class DirThrProductionFormatter extends TextThrProductionFormatter {
     public DirThrProductionFormatter(File outDir) throws IOException {
         this.outDir = outDir;
         this.initDirectory(outDir);
+    }
+
+    @Override
+    protected void openReport() {
         // Create the label file.
         File labelFile = new File(outDir, "labels.txt");
-        MarkerFile.write(labelFile, "production");
+        MarkerFile.write(labelFile, this.getProdName());
+        // Call the base class.
+        super.openReport();
     }
 
     @Override

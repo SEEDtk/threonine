@@ -47,9 +47,10 @@ import org.theseed.utils.ParseFailureException;
  * --minHours	minimum time point to include (default 0)
  * --maxHours	maximum time point to include (default 24)
  * --min		minimum production; only production values strictly greater than this will be output; the default is -1
- * --max		maximum production; only production values strictly less than this will be output; the default is 10
+ * --max		maximum production; only production values strictly less than this will be output; the default is 100
  * --pure		skip questionable results
  * --prod		name of production column to use; the default is "thr_production"
+ * --label		label to use for the production column; the default is "production"
  * --limited	comma-delimited list of strains IDs to include (default is include all)
  *
  * @author Bruce Parrello
@@ -103,6 +104,10 @@ public class ProdFormatProcessor extends BaseProcessor {
     @Option(name = "--prod", metaVar = "thr_rate", usage = "name of threonine production column from input file")
     private String prodName;
 
+    /** label to give to column containing production value */
+    @Option(name = "--label", metaVar = "thr_prod", usage = "label to put on production output column")
+    private String prodLabel;
+
     /** if specified, output will be limited to 277 and 926 strains */
     @Option(name = "--limited", usage = "comma-delimited list of strain IDs to include (default includes all)")
     private String limitStrains;
@@ -119,10 +124,11 @@ public class ProdFormatProcessor extends BaseProcessor {
         this.minHours = 0.0;
         this.maxHours = 24.0;
         this.minBound = -1.0;
-        this.maxBound = 10.0;
+        this.maxBound = 100.0;
         this.pureFlag = false;
         this.prodName = "thr_production";
         this.limitStrains = null;
+        this.prodLabel = "production";
     }
 
     @Override
@@ -162,6 +168,8 @@ public class ProdFormatProcessor extends BaseProcessor {
             int prodCol = reader.findField(this.prodName);
             int growthCol = reader.findField("growth");
             int badCol = reader.findField("bad");
+            // Set the production column label.
+            writer.setProdName(this.prodLabel);
             // Start the report.
             writer.initialize(this.choiceFile);
             log.info("Reading input file.");

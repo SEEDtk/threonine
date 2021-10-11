@@ -23,6 +23,15 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
     // FIELDS
     /** output file stream */
     private OutputStream outStream;
+    /** name to give to production column */
+    private String prodName;
+
+    /**
+     * Construct this reporter.
+     */
+    public ThrProductionFormatter() {
+        this.prodName = "production";
+    }
 
     /**
      * Enum for the different output types
@@ -59,6 +68,15 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
      */
     protected void setOutput(File outFile) throws FileNotFoundException {
         this.outStream = new FileOutputStream(outFile);
+    }
+
+    /**
+     * Set the name for the production column.
+     *
+     * @param newProdName	new column name to use
+     */
+    public void setProdName(String newProdName) {
+        this.prodName = newProdName;
     }
 
     /**
@@ -100,5 +118,12 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
      * Finish the report output.
      */
     protected abstract void closeReport();
+
+    /**
+     * @return the production column label
+     */
+    protected String getProdName() {
+        return this.prodName;
+    }
 
 }

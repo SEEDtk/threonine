@@ -48,7 +48,7 @@ public class ClassThrProductionFormatter extends TextThrProductionFormatter {
 
     @Override
     protected void registerHeader(String header) {
-        header = header + "\tprod_level";
+        header = header + "\t" + this.getProdName() + "_level";
         File trainFile = new File(this.outDir, "training.tbl");
         log.info("Header stored in {}.", trainFile);
         MarkerFile.write(trainFile, header);

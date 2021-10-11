@@ -168,7 +168,7 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
                 if (this.keepCol[i])
                     this.stringBuffer.append(delim).append(titles[i]);
             }
-            this.stringBuffer.append(delim).append("density").append(delim).append("production");
+            this.stringBuffer.append(delim).append("density").append(delim).append(this.getProdName());
             String header = this.stringBuffer.toString();
             this.registerHeader(header);
             // Scramble the output.

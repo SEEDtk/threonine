@@ -31,8 +31,5 @@ public class SugarTest {
         assertThat(testUsage.getUsage(), equalTo(0.0));
         assertThat(testUsage.isSuspicious(), isTrue());
     }
-    // FIELDS
-    // TODO data members for SugarTest
 
-    // TODO constructors and methods for SugarTest
 }
