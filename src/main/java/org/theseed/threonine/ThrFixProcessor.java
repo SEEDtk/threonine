@@ -29,7 +29,7 @@ import org.theseed.samples.SampleId;
 import org.theseed.utils.BaseProcessor;
 
 /**
- * This is a special-purpose script to reconcile the threonine growth data in the master file.
+ * This is a special-purpose script to reconcile the threonine growth and production data in the master file.
  *
  * Each row of the new strain file is identified in the old file by a strain name, an IPTG flag, and a time
  * stamp.  These three information items can be translated into a unique sample ID.  All rows that map to the

@@ -240,7 +240,8 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
             Iterator<CSVRecord> records = CSVFormat.EXCEL.parse(reader).iterator();
             // Verify that this is a growth file.
             CSVRecord record = records.next();
-            if (! record.get(0).startsWith("New assay"))
+            String recordLabel = record.get(0);
+            if (! recordLabel.startsWith("New assay") && ! recordLabel.startsWith("OD"))
                 throw new IOException("\"" + growthFile + " does not appear to be a valid growth file.");
             log.info("Reading growth information from \"{}\".", growthFile);
             // Now compute the plate ID.
@@ -255,6 +256,8 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
                         plate = part;
                 }
             }
+            if (plate == null)
+            	throw new IOException("Could not find plate ID in file " + growthFile + ".");
             ExperimentData results = this.experimentMap.get(plate);
             if (results == null)
                 throw new IOException("Could not find experiment plate " + plate + ".");
@@ -265,6 +268,10 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
                 Matcher m = DILUTION_LINE.matcher(marker);
                 if (m.matches())
                     factor = Double.valueOf(m.group(1));
+                if (marker.contentEquals("results by well")) {
+                	// No dilution line.  Stop here and set the factor to 1.0.
+                	factor = 10.0;
+                }
             }
             // Now find the well growths.
             int storeCount = 0;
@@ -372,6 +379,8 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
                         else {
                             String plate = sample.getPlate();
                             String well = sample.getWell();
+                            if (plate.toLowerCase().contentEquals("nopl"))
+                            	plate = "NONE";
                             ExperimentData experiment = this.experimentMap.get(plate);
                             if (experiment == null)
                                 log.warn("Invalid plate ID \"{}\" in sample map.", plate);
