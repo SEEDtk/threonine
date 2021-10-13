@@ -8,7 +8,9 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -50,6 +52,7 @@ import org.theseed.utils.ParseFailureException;
  * --max		maximum production; only production values strictly less than this will be output; the default is 100
  * --pure		skip questionable results
  * --prod		name of production column to use; the default is "thr_production"
+ * --meta		list of meta-data column labels to use (multiple may be specified)
  * --label		label to use for the production column; the default is "production"
  * --limited	comma-delimited list of strains IDs to include (default is include all)
  *
@@ -107,8 +110,12 @@ public class ProdFormatProcessor extends BaseProcessor {
     /** label to give to column containing production value */
     @Option(name = "--label", metaVar = "thr_prod", usage = "label to put on production output column")
     private String prodLabel;
+    
+    /** list of additional meta-data columns to output */
+    @Option(name = "--meta", metaVar = "growth", usage = "list of meta-data columns to specify")
+    private List<String> metaCols;
 
-    /** if specified, output will be limited to 277 and 926 strains */
+    /** if specified, output will be limited to the specified strains */
     @Option(name = "--limited", usage = "comma-delimited list of strain IDs to include (default includes all)")
     private String limitStrains;
 
@@ -127,6 +134,7 @@ public class ProdFormatProcessor extends BaseProcessor {
         this.maxBound = 100.0;
         this.pureFlag = false;
         this.prodName = "thr_production";
+        this.metaCols = new ArrayList<String>();
         this.limitStrains = null;
         this.prodLabel = "production";
     }
@@ -162,11 +170,13 @@ public class ProdFormatProcessor extends BaseProcessor {
     protected void runCommand() throws Exception {
         // Open the output object and the input file.
         try (TabbedLineReader reader = new TabbedLineReader(this.reader);
-                ThrProductionFormatter writer = this.format.create(this.outFile)) {
+                ThrProductionFormatter writer = this.format.create(this.outFile, this.metaCols)) {
             // Locate the important input columns.
             int sampleCol = reader.findField("sample");
             int prodCol = reader.findField(this.prodName);
-            int growthCol = reader.findField("growth");
+            int[] metaColNums = new int[this.metaCols.size()];
+            for (int i = 0; i < metaColNums.length; i++)
+            	metaColNums[i] = reader.findField(this.metaCols.get(i));
             int badCol = reader.findField("bad");
             // Set the production column label.
             writer.setProdName(this.prodLabel);
@@ -194,7 +204,7 @@ public class ProdFormatProcessor extends BaseProcessor {
                         excludeCount++;
                     else {
                         double production = line.getDouble(prodCol);
-                        double density = line.getDouble(growthCol);
+                        double[] metaVals = Arrays.stream(metaColNums).mapToDouble(i -> line.getDouble(i)).toArray();
                         // Check for the bounds and the 24-hour filter.
                         if (production <= this.minBound || production >= this.maxBound)
                             boundCount++;
@@ -202,7 +212,7 @@ public class ProdFormatProcessor extends BaseProcessor {
                             timeCount++;
                         else {
                             // Here we have a good sample.
-                            writer.writeSample(sample, production, density);
+                            writer.writeSample(sample, production, metaVals);
                             count++;
                         }
                     }

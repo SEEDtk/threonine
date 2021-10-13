@@ -9,6 +9,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.util.List;
 
 import org.theseed.samples.SampleId;
 
@@ -25,6 +26,8 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
     private OutputStream outStream;
     /** name to give to production column */
     private String prodName;
+    /** list of metadata column names */
+    private List<String> metaColNames;
 
     /**
      * Construct this reporter.
@@ -39,7 +42,7 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
     public static enum Type {
         CSV, TABLE, DIR, CLASS;
 
-        public ThrProductionFormatter create(File outFile) throws IOException {
+        public ThrProductionFormatter create(File outFile, List<String> metaCols) throws IOException {
             ThrProductionFormatter retVal = null;
             switch (this) {
             case CSV :
@@ -54,6 +57,7 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
             case DIR :
                 retVal = new DirThrProductionFormatter(outFile);
             }
+            retVal.saveMetaCols(metaCols);
             return retVal;
         }
 
@@ -71,6 +75,15 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
     }
 
     /**
+     * Save the names of the metadata columns.
+     * 
+	 * @param metaCols	metadata column names, in order
+	 */
+	public void saveMetaCols(List<String> metaCols) {
+		this.metaColNames = metaCols;
+	}
+
+	/**
      * Set the name for the production column.
      *
      * @param newProdName	new column name to use
@@ -99,7 +112,7 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
     /**
      * Write a sample to the output.
      */
-    public abstract void writeSample(SampleId sample, double production, double density);
+    public abstract void writeSample(SampleId sample, double production, double[] metaVals);
 
     /**
      * Close this report.
@@ -125,5 +138,12 @@ public abstract class ThrProductionFormatter extends ThrSampleFormatter implemen
     protected String getProdName() {
         return this.prodName;
     }
+
+	/**
+	 * @return the metaColNames
+	 */
+	public List<String> getMetaColNames() {
+		return metaColNames;
+	}
 
 }

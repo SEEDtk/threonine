@@ -7,8 +7,11 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.List;
+import java.util.stream.IntStream;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.theseed.io.Shuffler;
 import org.theseed.samples.SampleId;
@@ -125,9 +128,9 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
     }
 
     @Override
-    public void writeSample(SampleId sample, double production, double density) {
+    public void writeSample(SampleId sample, double production, double[] metaVals) {
         double[] data = this.parseSample(sample);
-        int n = data.length + 2;
+        int n = data.length + 1 + metaVals.length;
         if (this.lastValue == null) {
             // First time through, so initialize the tracking system.
             this.lastValue = new double[n];
@@ -136,9 +139,8 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
                 this.lastValue[i] = data[i];
                 this.keepCol[i] = false;
             }
-            // We always keep the production and density.
-            this.keepCol[n - 2] = true;
-            this.keepCol[n - 1] = true;
+            // We always keep the production and the metadata
+            IntStream.range(data.length, n).forEach(i -> this.keepCol[i] = true);
         } else {
             // Not the first time through, so check for differences.
             for (int i = 0; i < data.length; i++) {
@@ -150,7 +152,7 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
         }
         // Save the production and density.
         this.lastValue[n - 1] = production;
-        this.lastValue[n - 2] = density;
+        IntStream.range(0, metaVals.length).forEach(i -> this.lastValue[i + data.length] = metaVals[i]);
         // Add this row to the output buffer.
         this.buffer.add(new DataLine(sample.toString(), this.lastValue));
     }
@@ -168,7 +170,11 @@ public class TextThrProductionFormatter extends ThrProductionFormatter {
                 if (this.keepCol[i])
                     this.stringBuffer.append(delim).append(titles[i]);
             }
-            this.stringBuffer.append(delim).append("density").append(delim).append(this.getProdName());
+            String metaLabel = "";
+            List<String> metaNames = this.getMetaColNames();
+            if (! metaNames.isEmpty())
+            	metaLabel = StringUtils.join(this.getMetaColNames(), delim) + delim;
+            this.stringBuffer.append(delim).append(metaLabel).append(this.getProdName());
             String header = this.stringBuffer.toString();
             this.registerHeader(header);
             // Scramble the output.

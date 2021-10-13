@@ -267,7 +267,7 @@ public class ThrFixProcessor extends BaseProcessor {
         // Write the results.
         log.info("Producing output to {}.", this.outFile);
         try (PrintWriter writer = new PrintWriter(this.outFile)) {
-            writer.println("num\told_strain\tsample\tthr_production\tgrowth\tbad\tthr_normalized\tthr_rate\torigins\traw_productions");
+            writer.println("num\told_strain\tsample\tthr_production\tdensity\tbad\tthr_normalized\tthr_rate\torigins\traw_productions");
             int num = 0;
             for (Map.Entry<SampleId, GrowthData> sampleEntry : this.growthMap.entrySet()) {
                 SampleId sampleId = sampleEntry.getKey();
