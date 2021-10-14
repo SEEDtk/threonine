@@ -7,10 +7,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -26,6 +24,7 @@ import org.theseed.samples.SampleId;
 import org.theseed.samples.WellDescriptor;
 import org.theseed.utils.BaseReportProcessor;
 import org.theseed.utils.ParseFailureException;
+import org.theseed.sugar.SugarMerger;
 
 /**
  * This command takes the output file from SugarUtilizationProcessor and merges it with the big production
@@ -45,12 +44,13 @@ import org.theseed.utils.ParseFailureException;
  * -v	show more frequent log messages
  * -o	output file (if not STDOUT)
  *
- * --mean	type of mean to use (TRIMEAN, MAX, MIDDLE, SIGMA1, SIGMA2)
+ * --mean		type of mean to use (TRIMEAN, MAX, MIDDLE, SIGMA1, SIGMA2)
+ * --merge		sugar-merging strategy-- MAX or MEAN
  *
  * @author Bruce Parrello
  *
  */
-public class SugarMergeProcessor extends BaseReportProcessor {
+public class SugarMergeProcessor extends BaseReportProcessor implements SugarMerger.IParms {
 
     // FIELDS
     /** logging facility */
@@ -58,13 +58,18 @@ public class SugarMergeProcessor extends BaseReportProcessor {
     /** array of sugar data column titles */
     private String[] sugarTitles;
     /** computation engine for the mean */
-    private MeanComputer computer;
+    private SugarMerger computer;
 
+    
     // COMMAND-LINE OPTIONS
 
     /** type of mean computation to perform */
     @Option(name = "--mean", usage = "type of mean to compute when merging values")
     private MeanComputer.Type meanType;
+    
+    /** type of sugar merging to perform */
+    @Option(name = "--merge", usage = "method for merging sugar data")
+    private SugarMerger.Type sugarType;
 
     /** input sugar data file */
     @Argument(index = 0, metaVar = "sugar.tbl", usage = "input sugar data file", required = true)
@@ -78,6 +83,7 @@ public class SugarMergeProcessor extends BaseReportProcessor {
     @Override
     protected void setReporterDefaults() {
         this.meanType = MeanComputer.Type.TRIMEAN;
+        this.sugarType = SugarMerger.Type.MEAN;
     }
 
     @Override
@@ -87,13 +93,14 @@ public class SugarMergeProcessor extends BaseReportProcessor {
         if (! this.bigProdFile.canRead())
             throw new FileNotFoundException("Big production table file " + this.bigProdFile +
                     " is not found or unreadable.");
-        this.computer = this.meanType.create();
+        this.computer = this.sugarType.create(this);
     }
 
     @Override
     protected void runReporter(PrintWriter writer) throws Exception {
         // Loop through the sugar data, building a map from experiment wells to sugar arrays.
-        Map<WellDescriptor, double[]> sugarMap = new HashMap<WellDescriptor, double[]>(3000);
+        Map<WellDescriptor, SugarMerger.DataPoint> sugarMap = 
+        		new HashMap<WellDescriptor, SugarMerger.DataPoint>(3000);
         int sugarIn = 0;
         log.info("Reading sugar data from {}.", this.sugarFile);
         try (TabbedLineReader sugarStream = new TabbedLineReader(this.sugarFile)) {
@@ -108,15 +115,20 @@ public class SugarMergeProcessor extends BaseReportProcessor {
             // Now loop through the sugar data, filling the map.
             for (TabbedLineReader.Line line : sugarStream) {
                 sugarIn++;
-                // Get the time point and the origin, then form the well descriptor.
-                String origin = line.get(originCol);
-                SampleId sample = new SampleId(line.get(sampleCol));
-                double timePoint = sample.getTimePoint();
-                WellDescriptor well = new WellDescriptor(origin, timePoint);
-                // Get the array of sugar values and store them in the map.
-                double[] values = IntStream.range(prodCol + 1, endCol)
-                        .mapToDouble(i -> line.getDouble(i)).toArray();
-                sugarMap.put(well, values);
+                // Verify that we are not suspect.
+                if (! line.get(endCol).contentEquals("Y")) {
+	                // Get the time point and the origin, then form the well descriptor.
+	                String origin = line.get(originCol);
+	                SampleId sample = new SampleId(line.get(sampleCol));
+	                double timePoint = sample.getTimePoint();
+	                WellDescriptor well = new WellDescriptor(origin, timePoint);
+	                // Get the production value.
+	                double prod = line.getDouble(prodCol);
+	                // Get the array of sugar values and store them in the map.
+	                double[] values = IntStream.range(prodCol + 1, endCol)
+	                        .mapToDouble(i -> line.getDouble(i)).toArray();
+	                sugarMap.put(well, new SugarMerger.DataPoint(prod, values));
+                }
             }
             log.info("{} lines read, {} put in map.", sugarIn, sugarMap.size());
         }
@@ -130,10 +142,6 @@ public class SugarMergeProcessor extends BaseReportProcessor {
             int prodIn = 0;
             int prodKept = 0;
             int wellsUsed = 0;
-            // This will be used as the output array.  For each sugar value, we keep a list of
-            // Doubles.  These lists are then fed to the mean computer one at a time.
-            List<List<Double>> listArray = IntStream.range(0, this.sugarTitles.length)
-                    .mapToObj(i -> new ArrayList<Double>()).collect(Collectors.toList());
             // Write the output header.
             writer.println(prodStream.header() + "\t" + StringUtils.join(this.sugarTitles, "\t"));
             // Loop through the big production table.
@@ -144,24 +152,25 @@ public class SugarMergeProcessor extends BaseReportProcessor {
                 double timePoint = sample.getTimePoint();
                 // Get the origin list.
                 String[] origins = StringUtils.splitByWholeSeparator(line.get(originCol), ", ");
-                // Clear the list array.
-                listArray.forEach(x -> x.clear());
+                // Initialize the sugar merger.
+                this.computer.clear();
                 // Denote we haven't found any origins with sugar data.
                 int found = 0;
                 // Loop through the origins, filling the lists in the list array.
                 for (String origin : origins) {
                     WellDescriptor well = new WellDescriptor(origin, timePoint);
-                    double[] values = sugarMap.get(well);
+                    SugarMerger.DataPoint values = sugarMap.get(well);
                     if (values != null) {
-                        IntStream.range(0, this.sugarTitles.length).forEach(i -> listArray.get(i).add(values[i]));
+                        this.computer.merge(values);
                         found++;
                     }
                 }
                 // If we found an origin, then this is an output line.  Compute the means and format
                 // them for output.
                 if (found > 0) {
+                	this.computer.compute();
                     String means = IntStream.range(0, this.sugarTitles.length)
-                            .mapToDouble(i -> this.computer.goodMean(listArray.get(i)))
+                            .mapToDouble(i -> this.computer.get(i))
                             .mapToObj(f -> String.format("\t%8.4f", f)).collect(Collectors.joining());
                     writer.println(line.toString() + means);
                     prodKept++;
@@ -171,5 +180,10 @@ public class SugarMergeProcessor extends BaseReportProcessor {
             log.info("{} production records read, {} kept, {} well values used.", prodIn, prodKept, wellsUsed);
         }
     }
+
+	@Override
+	public MeanComputer.Type getMeanType() {
+		return this.meanType;
+	}
 
 }
