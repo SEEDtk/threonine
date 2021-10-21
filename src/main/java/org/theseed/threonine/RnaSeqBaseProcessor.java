@@ -95,7 +95,7 @@ public abstract class RnaSeqBaseProcessor extends BaseProcessor {
         try {
             this.data = RnaData.load(this.rnaDataFile);
         } catch (ClassNotFoundException e) {
-            throw new ParseFailureException("Version error in " + this.rnaDataFile + ": " + e.getMessage());
+            throw new ParseFailureException("Version error in " + this.rnaDataFile + ": " + e.toString());
         }
     }
 

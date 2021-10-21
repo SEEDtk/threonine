@@ -127,7 +127,7 @@ public class RnaSeqClassProcessor extends BaseProcessor implements AdvancedExpre
         try {
             this.data = RnaData.load(this.rnaDataFile);
         } catch (ClassNotFoundException e) {
-            throw new ParseFailureException("Version error in " + this.rnaDataFile + ": " + e.getMessage());
+            throw new ParseFailureException("Version error in " + this.rnaDataFile + ": " + e.toString());
         }
         // Insure the thresholds are valid.
         if (this.minGood > 100)
