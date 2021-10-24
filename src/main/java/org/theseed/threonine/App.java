@@ -22,6 +22,7 @@ import org.theseed.utils.BaseProcessor;
  * extract		extract certain types of samples from a master table
  * sugarFix		compute glucose utilization level from a spreadsheet directory
  * sugarMerge	merge glucose data into the big production table
+ * sampleCount	count strains and samples in a big production table
  *
  */
 public class App
@@ -85,6 +86,9 @@ public class App
         case "sugarMerge" :
             processor = new SugarMergeProcessor();
             break;
+        case "sampleCount" :
+        	processor = new SampleCountProcessor();
+        	break;
         default:
             throw new RuntimeException("Invalid command " + command);
         }
