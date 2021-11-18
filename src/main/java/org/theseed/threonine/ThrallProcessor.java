@@ -155,8 +155,10 @@ public class ThrallProcessor extends BaseProcessor implements SampleFilter.IParm
         } else {
             // Here we must generate by modifying input samples.
             Set<String> stringSet = TabbedLineReader.readSet(this.originalFile, "sample");
-            this.originals = stringSet.stream().map(x -> new SampleId(x)).collect(Collectors.toSet());
+            this.originals = stringSet.stream().map(x -> (new SampleId(x)).normalizeSets())
+                    .collect(Collectors.toSet());
             log.info("{} original samples found in file {}.", this.originals.size(), this.originalFile);
+            // Make sure the input names are normalized.
         }
         // Verify the max deletes.
         if (this.maxDeletes < 0)
