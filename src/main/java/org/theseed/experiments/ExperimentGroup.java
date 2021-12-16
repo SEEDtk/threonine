@@ -161,7 +161,7 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
      */
     public ExperimentGroup(File dir, String id) throws IOException {
         super();
-		this.inDir = dir;
+        this.inDir = dir;
         this.expID = id;
         this.normFactor = 0.04;
         this.bigCols = 24;
@@ -196,6 +196,9 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
             double time = this.computeTimePoint(prodFile);
             this.timeSeries.add(time);
         }
+        // If the time series is empty, use the default.
+        if (this.timeSeries.isEmpty())
+            this.timeSeries.add(this.timePoint);
         log.info("{} time points will be used for this run.", this.timeSeries.size());
     }
 
@@ -218,7 +221,7 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
         try (LineReader inStream = new LineReader(inFile)) {
             log.info("Reading bad-well data from \"{}\".", inFile);
             for (String line : inStream) {
-                String[] parts = StringUtils.split(line);
+                String[] parts = StringUtils.split(line, '\t');
                 Set<String> wells = Arrays.stream(StringUtils.split(parts[1], ',')).collect(Collectors.toSet());
                 this.badWells.put(parts[0], wells);
                 count += wells.size();
@@ -257,7 +260,7 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
                 }
             }
             if (plate == null)
-            	throw new IOException("Could not find plate ID in file " + growthFile + ".");
+                throw new IOException("Could not find plate ID in file " + growthFile + ".");
             ExperimentData results = this.experimentMap.get(plate);
             if (results == null)
                 throw new IOException("Could not find experiment plate " + plate + ".");
@@ -269,8 +272,8 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
                 if (m.matches())
                     factor = Double.valueOf(m.group(1));
                 if (marker.contentEquals("results by well")) {
-                	// No dilution line.  Stop here and set the factor to 1.0.
-                	factor = 10.0;
+                    // No dilution line.  Stop here and set the factor to 1.0.
+                    factor = 10.0;
                 }
             }
             // Now find the well growths.
@@ -380,7 +383,7 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
                             String plate = sample.getPlate();
                             String well = sample.getWell();
                             if (plate.toLowerCase().contentEquals("nopl"))
-                            	plate = "NONE";
+                                plate = "NONE";
                             ExperimentData experiment = this.experimentMap.get(plate);
                             if (experiment == null)
                                 log.warn("Invalid plate ID \"{}\" in sample map.", plate);

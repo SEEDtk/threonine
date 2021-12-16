@@ -307,6 +307,13 @@ public class ExperimentData implements Iterable<ExperimentData.Result>{
     }
 
     /**
+     * @return the layout data for this experiment
+     */
+    public Set<Map.Entry<String, String>> getLayout() {
+        return this.strainMap.entrySet();
+    }
+
+    /**
      * Store a result in this structure.  The specs of the result are specified, but not the growth or
      * production data.
      *

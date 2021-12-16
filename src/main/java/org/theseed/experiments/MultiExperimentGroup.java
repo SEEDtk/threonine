@@ -110,6 +110,8 @@ public class MultiExperimentGroup extends ExperimentGroup {
             // Loop through the paragraphs.
             for (XWPFParagraph para : document.getParagraphs()) {
                 String line = getLine(para);
+                if (line.startsWith("No plasmid"))
+                    line = "";
                 String numFmt = para.getNumFmt();
                 if (numFmt != null) {
                     // Here we have a row or column.  Do the IPTG safety check, then figure out which it is.
@@ -117,6 +119,7 @@ public class MultiExperimentGroup extends ExperimentGroup {
                         throw new IOException("Cannot have row or column data following IPTG paragraph.");
                        switch (numFmt) {
                        case "upperLetter" :
+                       case "lowerLetter" :
                            // Here we have a row.
                            rowStrings[row] = line;
                            row++;
@@ -192,7 +195,7 @@ public class MultiExperimentGroup extends ExperimentGroup {
                         // Insure we have a valid column and the well is not overridden.
                         if (colString != null && ! colString.contentEquals("Blank") && ! strainMap.containsKey(well)) {
                             // Form this well's strain name.
-                            strainMap.put(well, colString + " " + rowString);
+                            strainMap.put(well, colString + rowString);
                         }
                     }
                 }

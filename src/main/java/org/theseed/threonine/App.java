@@ -24,6 +24,7 @@ import org.theseed.utils.BaseProcessor;
  * sugarMerge	merge glucose data into the big production table
  * sampleCount	count strains and samples in a big production table
  * normalize	normalize the sample IDs in a file
+ * layout		convert a layout file to a CSV showing all the wells
  *
  */
 public class App
@@ -92,6 +93,9 @@ public class App
             break;
         case "normalize" :
             processor = new SampleNormalizeProcessor();
+            break;
+        case "layout" :
+            processor = new LayoutProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
