@@ -57,7 +57,7 @@ import org.theseed.io.LineReader;
  * and a comma-delimited list of wells on that plate that should be marked suspicious.
  *
  * Each small plate has its own growth data file.  The growth data file is comma-delimited and quoted.
- * The second line will contain the plate identification surrounded by spaces.  As a weird special case, a
+ * The second line will contain the plate identification in the first field.  As a weird special case, a
  * plate ID of "NO PLASMID" is changed to "NONE".  Further on, the real data will appear after a header line
  * ("Well","Sample","OD(600)").  This section contains the well ID in the first column and the growth in the third.
  * Note that for each column, the growth value must be normalized by subtracting an offset and multiplying by the
@@ -97,7 +97,7 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
     private int startCol;
 
     /** special NONE string */
-    protected static final String NONE_STRING = "NO PLASMID";
+    protected static final Set<String> NONE_SET = Set.of("NO PLASMID", "NOPL", "NO PLAS");
     /** pattern for blank cells */
     protected static final Pattern BLANK_CELL = Pattern.compile("blank|blak", Pattern.CASE_INSENSITIVE);
     /** pattern for well labels */
@@ -123,7 +123,11 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
          * @param timePoint		time point
          */
         public SampleDesc(String plateId, String wellId, double timePoint) {
-            this.plate = plateId;
+            // Normalize the various names of the "no plasmid" plate.
+            if (NONE_SET.contains(plateId))
+                this.plate = "NONE";
+            else
+                this.plate = plateId;
             this.well = wellId;
             this.time = timePoint;
         }
@@ -190,10 +194,13 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
                 this.readBadWellFile(inFile);
             }
         }
-        // Compute the time series from the production file names.
+        // Compute the time series from the production and growth file names.
         this.timeSeries = new TreeSet<Double>();
-        for (File prodFile : this.prodFiles) {
-            double time = this.computeTimePoint(prodFile);
+        List<File> files = new ArrayList<File>(this.growthFiles.size() + this.prodFiles.size());
+        files.addAll(this.prodFiles);
+        files.addAll(this.growthFiles);
+        for (File file : files) {
+            double time = this.computeTimePoint(file);
             this.timeSeries.add(time);
         }
         // If the time series is empty, use the default.
@@ -250,15 +257,10 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
             // Now compute the plate ID.
             String marker = records.next().get(0).toUpperCase();
             String plate = null;
-            if (marker.contains(NONE_STRING))
+            if (NONE_SET.contains(marker))
                 plate = "NONE";
-            else {
-                String[] parts = StringUtils.split(marker);
-                for (String part : parts) {
-                    if (this.experimentMap.containsKey(part))
-                        plate = part;
-                }
-            }
+            else
+                plate = marker;
             if (plate == null)
                 throw new IOException("Could not find plate ID in file " + growthFile + ".");
             ExperimentData results = this.experimentMap.get(plate);

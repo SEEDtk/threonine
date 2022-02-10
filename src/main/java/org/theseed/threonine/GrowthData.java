@@ -30,6 +30,8 @@ public class GrowthData implements Comparable<GrowthData> {
     private BitSet goodLevels;
     /** saved production value */
     private double productionKey;
+    /** prediction value */
+    private double prediction;
     /** optical densities */
     private List<Double> density;
     /** experiment and well */
@@ -60,6 +62,7 @@ public class GrowthData implements Comparable<GrowthData> {
         this.timePoint = time;
         this.suspicious = false;
         this.productionKey = Double.NaN;
+        this.prediction = Double.NaN;
     }
 
     /**
@@ -326,6 +329,22 @@ public class GrowthData implements Comparable<GrowthData> {
             return false;
         }
         return true;
+    }
+
+    /**
+     * @return the predicted production value
+     */
+    public double getPrediction() {
+        return this.prediction;
+    }
+
+    /**
+     * Specify the predicted production value.
+     *
+     * @param prediction 	prediction to store
+     */
+    public void setPrediction(double prediction) {
+        this.prediction = prediction;
     }
 
 }

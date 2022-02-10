@@ -94,7 +94,7 @@ public class SetExperimentGroup extends ExperimentGroup {
                     done = true;
                 else {
                     String[] parts = value.split("\\.?\\s+", 2);
-                    if (parts[1].toUpperCase().contentEquals(NONE_STRING)) {
+                    if (NONE_SET.contains(parts[1].toUpperCase())) {
                         parts[1] = "";
                         parts[0] = "NONE";
                     } else

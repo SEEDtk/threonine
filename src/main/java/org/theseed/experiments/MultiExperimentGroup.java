@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -23,12 +24,14 @@ import org.slf4j.LoggerFactory;
 
 /**
  * This experiment group has multiple layout files stored as word documents.  Each layout document has a heading
- * paragraph with the text "Layout for set XXXX", where "XXXX" is the plate name.  The column paragraphs are numbered
- * list items with format "decimal" and contain part of a strain name.  The row paragraphs are numbered list items with
- * format "upperletter"  and contain "0" (indicating no change), or an additional modifier for the strain name.  There may also
- * be override paragraphs beginning with a letter-number combination and a period.  These are NOT list items, and contain strains
- * that ignore the standard row and column rules.  At any point, a strain name of "Blank" indicates no organism in the well.
- * Finally, the IPTG paragraph is of the form
+ * paragraph with the text "Layout for set XXXX", where "XXXX" is the plate name.  Additional plates with the
+ * same layout may be specified by adding them with comma delimiters (e.g. "XXXX, YYYY, ZZZZ).  The column paragraphs
+ * are numbered list items with format "decimal" and contain part of a strain name.  The row paragraphs are
+ * numbered list items with format "upperletter"  and contain "0" (indicating no change), or an additional
+ * modifier for the strain name.  There may also be override paragraphs beginning with a letter-number combination
+ * and a period.  These are NOT list items, and contain strains that ignore the standard row and column rules.
+ * At any point, a strain name of "Blank" indicates no organism in the well.  Finally, the IPTG paragraph is of
+ * the form
  *
  * 		IPTG X=Y, X=Y, ..., X=Y
  *
@@ -46,8 +49,8 @@ public class MultiExperimentGroup extends ExperimentGroup {
     // FIELDS
     /** logging facility */
     protected static Logger log = LoggerFactory.getLogger(MultiExperimentGroup.class);
-    /** sample name search pattern */
-    private static final Pattern SAMPLE_NAME = Pattern.compile("0?([^\\s\\-]+)(?:[ -](\\d+)H)?\\s+([A-Z]\\d+)");
+    /** override time string in sample name */
+    protected static final Pattern SAMPLE_NAME = Pattern.compile("0?(.+?)(?:\\s+(\\d+)[Hh])?\\s+([A-Z]\\d+)");
     /** array of well letters */
     private static final String[] LETTERS = new String[] { "A", "B", "C", "D", "E", "F", "G", "H" };
     /** array of well numbers */
@@ -57,7 +60,7 @@ public class MultiExperimentGroup extends ExperimentGroup {
     /** pattern for IPTG line */
     private static final Pattern IPTG_LINE = Pattern.compile("IPTG\\s+(.+)");
     /** pattern for plate ID line */
-    private static final Pattern PLATE_LINE = Pattern.compile("Layout for set (\\S+)");
+    private static final Pattern PLATE_LINE = Pattern.compile("Layout for sets?\\s+(.+)");
     /** pattern for non-ASCII characters */
     private static final Pattern BAD_CHARS = Pattern.compile("[^\\x00-\\x7F]");
     /** pattern for parsing time point from growth file name */
@@ -94,8 +97,8 @@ public class MultiExperimentGroup extends ExperimentGroup {
     protected void readLayoutFile(File layoutFile) throws IOException {
         // This is the final strain string map.  The overrides go directly in here.
         Map<String, String> strainMap = new HashMap<String, String>(100);
-        // This is where we put the plate ID.
-        String plate = null;
+        // This is where we put the plate IDs.
+        Set<String> plates = null;
         // Get access to the word document.
         try (FileInputStream fileStream = new FileInputStream(layoutFile);
             XWPFDocument document = new XWPFDocument(fileStream)) {
@@ -141,9 +144,11 @@ public class MultiExperimentGroup extends ExperimentGroup {
                     } else {
                         m = PLATE_LINE.matcher(line);
                         if (m.matches()) {
-                            plate = StringUtils.removeEnd(m.group(1), ".");
-                            this.createExperiment(plate);
-                            log.info("Layout for experiment plate {}.", plate);
+                            String plateString = StringUtils.removeEnd(m.group(1), ".");
+                            plates = Set.of(plateString.split(",\\s*"));
+                            for (String plate : plates)
+                                this.createExperiment(plate);
+                            log.info("Processing plate layout.  Experiment list: {}.", StringUtils.join(plates, ", "));
                         } else {
                             m = IPTG_LINE.matcher(line);
                             if (m.matches()) {
@@ -203,7 +208,7 @@ public class MultiExperimentGroup extends ExperimentGroup {
             log.info("{} row mappings, {} column mappings, {} strain mappings.", row, col, strainMap.size());
         }
         // We are finished with the layout file, but we have to convert the strain mapping information into results.
-        if (plate == null)
+        if (plates == null)
             throw new IOException("No plate ID found.");
         for (Map.Entry<String, String> strainEntry : strainMap.entrySet()) {
             String well = strainEntry.getKey();
@@ -216,7 +221,8 @@ public class MultiExperimentGroup extends ExperimentGroup {
                     iptgFlag = true;
                 }
                 // Store this strain and associate it with this well.
-                this.store(plate, strainString, well, iptgFlag);
+                for (String plate : plates)
+                    this.store(plate, strainString, well, iptgFlag);
             }
         }
     }

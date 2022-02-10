@@ -55,6 +55,8 @@ import org.theseed.utils.BaseProcessor;
  * 				as questionable
  * --time		if specified, only the indicated time point will be output; a negative value indicates no filtering
  * --iptg		if specified, only IPTG-positive samples will be output
+ * --predict	name of a file containing predicted production values for the samples; the file should be tab-delimited,
+ * 				with headers, the sample ID in column 1 and the prediction in column 2
  *
  * @author Bruce Parrello
  *
@@ -97,6 +99,10 @@ public class ThrFixProcessor extends BaseProcessor {
     @Option(name = "--iptg", usage = "if specified, only IPTG-positive samples will be output")
     private boolean iptgFilter;
 
+    /** prediction input file */
+    @Option(name = "--predict", metaVar = "thrall.predictions.tbl", usage = "if specified, a tab-delimited 2-column file containing predicted production levels")
+    private File predictFile;
+
     /** old strain data file */
     @Argument(index = 0, metaVar = "oldStrains.tbl", usage = "old strain information file", required = true)
     private File oldFile;
@@ -117,6 +123,7 @@ public class ThrFixProcessor extends BaseProcessor {
         this.triggerThreshold = 1.2;
         this.timeFilter = -1.0;
         this.iptgFilter = false;
+        this.predictFile = null;
     }
 
      @Override
@@ -127,6 +134,9 @@ public class ThrFixProcessor extends BaseProcessor {
         // Store the mean type.
         GrowthData.MEAN_COMPUTER = this.meanType.create();
         log.info("Using {} to average multi-valued samples.", this.meanType);
+        // Validate the prediction file.
+        if (this.predictFile != null && ! this.predictFile.canRead())
+            throw new FileNotFoundException("Prediction file " + this.predictFile + " is not found or unreadable.");
         return true;
     }
 
@@ -231,6 +241,26 @@ public class ThrFixProcessor extends BaseProcessor {
                 }
             }
         }
+        // Now apply the predictions.
+        if (this.predictFile != null) {
+            log.info("Reading predictions from {}.", this.predictFile);
+            int count = 0;
+            try (TabbedLineReader predictStream = new TabbedLineReader(this.predictFile)) {
+                for (TabbedLineReader.Line line : predictStream) {
+                    var sample = new SampleId(line.get(0));
+                    // Find this sample in one of the maps.
+                    var growthData = this.growthMap.get(sample);
+                    if (growthData == null)
+                        growthData = this.badGrowthMap.get(sample);
+                    // If we found it, store the prediction.
+                    if (growthData != null) {
+                        growthData.setPrediction(line.getDouble(1));
+                        count++;
+                    }
+                }
+            }
+            log.info("{} predictions stored for output.", count);
+        }
         // Write out the choices information.
         int colCount = 1;
         try (PrintWriter printer = new PrintWriter(this.choiceFile)) {
@@ -267,12 +297,12 @@ public class ThrFixProcessor extends BaseProcessor {
         // Write the results.
         log.info("Producing output to {}.", this.outFile);
         try (PrintWriter writer = new PrintWriter(this.outFile)) {
-            writer.println("num\told_strain\tsample\tthr_production\tdensity\tbad\tthr_normalized\tthr_rate\torigins\traw_productions");
+            writer.println("num\told_strain\tsample\tthr_production\tprediction\tdensity\tbad\tthr_normalized\tthr_rate\torigins\traw_productions");
             int num = 0;
             for (Map.Entry<SampleId, GrowthData> sampleEntry : this.growthMap.entrySet()) {
                 SampleId sampleId = sampleEntry.getKey();
-                    GrowthData growth = sampleEntry.getValue();
-                    num++;
+                GrowthData growth = sampleEntry.getValue();
+                num++;
                 String qFlag = (growth.isSuspicious() ? "?" : "");
                 writeSampleData(writer, num, sampleId, growth, qFlag);
             }
@@ -331,10 +361,10 @@ public class ThrFixProcessor extends BaseProcessor {
      * @param badFlag	"Y" if bad, "" if good, "?" if questionable
      */
     private void writeSampleData(PrintWriter writer, int num, SampleId sampleId, GrowthData growth, String badFlag) {
-        writer.format("%d\t%s\t%s\t%1.9f\t%s\t%s\t%1.9f\t%1.9f\t%s\t%s%n",
-                num, growth.getOldStrain(), sampleId.toString(), growth.getProduction(), format(growth.getDensity(), "%1.2f"),
-                badFlag, growth.getNormalizedProduction(), growth.getProductionRate(), growth.getOrigins(),
-                growth.getProductionList());
+        writer.format("%d\t%s\t%s\t%1.9f\t%1.9f\t%s\t%s\t%1.9f\t%1.9f\t%s\t%s%n",
+                num, growth.getOldStrain(), sampleId.toString(), growth.getProduction(), growth.getPrediction(),
+                format(growth.getDensity(), "%1.2f"), badFlag, growth.getNormalizedProduction(),
+                growth.getProductionRate(), growth.getOrigins(), growth.getProductionList());
     }
 
     /**
