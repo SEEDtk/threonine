@@ -1,0 +1,7 @@
+21593, 30316, 30317, 30318, 30319, 30823, 7, M
+0, D
+0, T, TA1, Tasd, TasdA, TasdA1
+0, A, C, P
+asdD, asdO, asdT
+aceBA, aspC, pntAB, ppc, pyc, rhtA, zwf
+dapA, dhaM, lysA, lysC, metL, ptsG, rhtA, tdh

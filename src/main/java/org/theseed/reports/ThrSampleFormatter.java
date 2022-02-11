@@ -39,6 +39,10 @@ public class ThrSampleFormatter {
     private String[] deleteChoices;
     /** permissible insert values */
     private String[] insertChoices;
+    /** current set of inserts */
+    private Set<String> insertSet;
+    /** current set of deletes */
+    private Set<String> deleteSet;
     /** number of output columns for the sample description */
     private int numCols;
     /** choices for IPTG flag */
@@ -73,6 +77,8 @@ public class ThrSampleFormatter {
         int n = SampleId.numBaseFragments();
         this.choices = new ArrayList<String[]>(n);
         this.iChoices = new ArrayList<String[]>(n);
+        this.insertSet = new TreeSet<String>();
+        this.deleteSet = new TreeSet<String>();
         // This will hold the number of output columns required for a sample ID.  We start with 2, for the
         // time and the IPTG flag.
         this.numCols = 2;
@@ -111,20 +117,20 @@ public class ThrSampleFormatter {
      */
     public String insertSubset(int mask) {
         String retVal;
+        this.insertSet.clear();
         // For an empty set, use 000.
         if (mask == 0)
             retVal = "000";
         else {
             // Here we have inserts to string together.
-            Set<String> inserts = new TreeSet<String>();
             int i = 0;
             while (mask > 0) {
                 if ((mask & 1) == 1)
-                    inserts.add(this.insertChoices[i]);
+                    this.insertSet.add(this.insertChoices[i]);
                 i++;
                 mask >>= 1;
             }
-            retVal = StringUtils.join(inserts, "-");
+            retVal = StringUtils.join(this.insertSet, "-");
         }
         return retVal;
     }
@@ -135,6 +141,7 @@ public class ThrSampleFormatter {
      */
     public String deleteSubset(int mask) {
         String retVal;
+        this.deleteSet.clear();
         // For an empty set, use D000.
         if (mask == 0)
             retVal = "D000";
@@ -144,8 +151,10 @@ public class ThrSampleFormatter {
             // Loop through the mask, processing bits.
             int i = 0;
             while (mask > 0) {
-                if ((mask & 1) == 1)
+                if ((mask & 1) == 1) {
                     buffer.append('D').append(this.deleteChoices[i]);
+                    this.deleteSet.add(this.deleteChoices[i]);
+                }
                 i++;
                 mask >>= 1;
             }
@@ -268,6 +277,8 @@ public class ThrSampleFormatter {
             while (this.originalIter.hasNext() && currentSet.isEmpty()) {
                 // Get the next sample to use as a base.
                 SampleId original = this.originalIter.next();
+                // If the original is invalid, skip it!
+                // TODO
                 // Prime it with the original.
                 this.generateDeletes(original, currentSet);
                 // Create samples by inserting.
@@ -310,7 +321,20 @@ public class ThrSampleFormatter {
          * @param currSet	current sample set
          */
         private void checkSample(SampleId sample, Set<SampleId> currSet) {
-            if (! this.history.contains(sample)) {
+            // Verify the sample is new.
+            boolean keep = ! this.history.contains(sample);
+            if (keep) {
+                // Verify the sample is valid.  It has to be for one of the main strains and it
+                // can't insert and delete the same protein at the same time.
+                String host = sample.getFragment(0);
+                keep = (host.contentEquals("7") || host.contentEquals("M"));
+                if (keep) {
+                    var deletes = sample.getDeletes();
+                    keep = sample.getInserts().stream().allMatch(x -> ! deletes.contains(x));
+                }
+            }
+            // Add it if we are keeping it.
+            if (keep) {
                 currSet.add(sample);
                 this.history.add(sample);
             }
@@ -336,7 +360,6 @@ public class ThrSampleFormatter {
             return retVal;
         }
 
-
     }
 
 
@@ -346,7 +369,7 @@ public class ThrSampleFormatter {
     public class SampleIterator implements Iterator<SampleId> {
 
         // FIELDS
-        /** positions in the different choices for the next item-- base, deletes, IPTG, TIME, MEDIUM */
+        /** positions in the different choices for the next item-- base, inserts, deletes, IPTG, TIME, MEDIUM */
         private int[] positions;
         /** number of choices at each position */
         private int[] limits;
@@ -467,13 +490,22 @@ public class ThrSampleFormatter {
          */
         private boolean checkValidity() {
             boolean retVal = true;
-            if (this.computeFragment(0).contentEquals("7") && this.computeFragment(3).contentEquals("0"))
+            String host = this.computeFragment(0);
+            switch (host) {
+            case "7" :
+                if (this.computeFragment(3).contentEquals("0"))
+                    retVal = false;
+                break;
+            case "M" :
+                if (this.computeFragment(3).contentEquals("A"))
+                    retVal = false;
+                else if (this.computeFragment(2).contentEquals("0"))
+                    retVal = false;
+                break;
+            default :
                 retVal = false;
-            else if (this.computeFragment(0).contentEquals("M") && this.computeFragment(3).contentEquals("A"))
-                retVal = false;
-            else if (this.computeFragment(0).contentEquals("M") && this.computeFragment(2).contentEquals("0"))
-                retVal = false;
-            else
+            }
+            if (retVal) {
                 switch (this.computeFragment(2)) {
                 case "TA":
                 case "TA1":
@@ -483,12 +515,18 @@ public class ThrSampleFormatter {
                     break;
                 case "0":
                     if (! this.computeFragment(1).contentEquals("0")) retVal = false;
-                    if (! this.computeFragment(3).contentEquals("0") && ! this.computeFragment(3).contentEquals("A")) retVal = false;
+                    if (! this.computeFragment(3).contentEquals("0") &&
+                            ! this.computeFragment(3).contentEquals("A")) retVal = false;
                     break;
                 default : /* TasdX */
                     if (! this.computeFragment(1).contentEquals("D")) retVal = false;
                     if (! this.computeFragment(3).contentEquals("P")) retVal = false;
                 }
+                if (retVal)
+                    // Verify that the deletes don't overlap the inserts.
+                    retVal = ! ThrSampleFormatter.this.insertSet.stream()
+                            .anyMatch(x -> ThrSampleFormatter.this.deleteSet.contains(x));
+            }
             return retVal;
         }
 

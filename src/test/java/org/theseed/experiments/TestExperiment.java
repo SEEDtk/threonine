@@ -2,7 +2,6 @@ package org.theseed.experiments;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.theseed.test.Matchers.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -59,34 +58,34 @@ public class TestExperiment {
         assertThat(result.getWell(), equalTo("B4"));
         assertThat(result.getTimePoint(), equalTo(24.0));
         assertThat(result.getStrain(), equalTo("926DthrABCDasdDdapA pfb6.4.2"));
-        assertThat(result.isIptg(), isFalse());
+        assertThat(result.isIptg(), equalTo(false));
         assertThat(result.getGrowth(), closeTo(5.91, 0.001));
         assertThat(result.getProduction(), closeTo(0.019, 0.001));
-        assertThat(result.isSuspect(), isFalse());
+        assertThat(result.isSuspect(), equalTo(false));
         result = group.getResult("D1", "F4", 24);
         assertThat(result.getWell(), equalTo("F4"));
         assertThat(result.getTimePoint(), equalTo(24.0));
         assertThat(result.getStrain(), equalTo("926DthrABCDasdDdapA pfb6.4.2"));
-        assertThat(result.isIptg(), isTrue());
+        assertThat(result.isIptg(), equalTo(true));
         assertThat(result.getGrowth(), closeTo(2.95, 0.001));
         assertThat(result.getProduction(), closeTo(0.059, 0.001));
-        assertThat(result.isSuspect(), isTrue());
+        assertThat(result.isSuspect(), equalTo(true));
         result = group.getResult("D1", "D6", 24);
         assertThat(result.getWell(), equalTo("D6"));
         assertThat(result.getTimePoint(), equalTo(24.0));
         assertThat(result.getStrain(), equalTo("277DthrABCDasdDmetL pfb6.4.3 pyc plasmid"));
-        assertThat(result.isIptg(), isFalse());
+        assertThat(result.isIptg(), equalTo(false));
         assertThat(result.getGrowth(), closeTo(0.05, 0.001));
         assertThat(result.getProduction(), closeTo(0.010, 0.001));
-        assertThat(result.isSuspect(), isFalse());
+        assertThat(result.isSuspect(), equalTo(false));
         result = group.getResult("D1", "H6", 24);
         assertThat(result.getWell(), equalTo("H6"));
         assertThat(result.getTimePoint(), equalTo(24.0));
         assertThat(result.getStrain(), equalTo("277DthrABCDasdDmetL pfb6.4.3 pyc plasmid"));
-        assertThat(result.isIptg(), isTrue());
+        assertThat(result.isIptg(), equalTo(true));
         assertThat(result.getGrowth(), closeTo(0.06, 0.001));
         assertThat(result.getProduction(), closeTo(0.012, 0.001));
-        assertThat(result.isSuspect(), isFalse());
+        assertThat(result.isSuspect(), equalTo(false));
         groupDir = new File("data", "S2");
         group = new SetExperimentGroup(groupDir, "S2");
         group.processFiles();
@@ -104,18 +103,18 @@ public class TestExperiment {
         assertThat(result.getWell(), equalTo("E2"));
         assertThat(result.getTimePoint(), equalTo(24.0));
         assertThat(result.getStrain(), equalTo("277 DrhtA ptac-thrABC rhtA"));
-        assertThat(result.isIptg(), isFalse());
+        assertThat(result.isIptg(), equalTo(false));
         assertThat(result.getGrowth(), closeTo(6.67, 0.001));
         assertThat(result.getProduction(), closeTo(0.00, 0.001));
-        assertThat(result.isSuspect(), isFalse());
+        assertThat(result.isSuspect(), equalTo(false));
         result = group.getResult("P6", "C8", 24);
         assertThat(result.getWell(), equalTo("C8"));
         assertThat(result.getTimePoint(), equalTo(24.0));
         assertThat(result.getStrain(), equalTo("926 DlysA ptac-thrABC ptac-asd rhtA"));
-        assertThat(result.isIptg(), isTrue());
+        assertThat(result.isIptg(), equalTo(true));
         assertThat(result.getGrowth(), closeTo(5.21, 0.001));
         assertThat(result.getProduction(), closeTo(0.00, 0.001));
-        assertThat(result.isSuspect(), isFalse());
+        assertThat(result.isSuspect(), equalTo(false));
     }
 
 }

@@ -5,7 +5,6 @@ package org.theseed.samples;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.theseed.test.Matchers.*;
 
 import org.junit.jupiter.api.Test;
 
@@ -20,16 +19,16 @@ public class SugarTest {
         SugarUsage.setLevels(40.0, 1.1);
         SugarUsage testUsage = new SugarUsage(40.0);
         assertThat(testUsage.getUsage(), equalTo(0.0));
-        assertThat(testUsage.isSuspicious(), isFalse());
+        assertThat(testUsage.isSuspicious(), equalTo(false));
         testUsage = new SugarUsage(37.0);
         assertThat(testUsage.getUsage(), equalTo(3.0));
-        assertThat(testUsage.isSuspicious(), isFalse());
+        assertThat(testUsage.isSuspicious(), equalTo(false));
         testUsage = new SugarUsage(41.0);
         assertThat(testUsage.getUsage(), equalTo(0.0));
-        assertThat(testUsage.isSuspicious(), isFalse());
+        assertThat(testUsage.isSuspicious(), equalTo(false));
         testUsage = new SugarUsage(45.0);
         assertThat(testUsage.getUsage(), equalTo(0.0));
-        assertThat(testUsage.isSuspicious(), isTrue());
+        assertThat(testUsage.isSuspicious(), equalTo(true));
     }
 
 }

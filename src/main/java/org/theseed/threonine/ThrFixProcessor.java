@@ -361,10 +361,11 @@ public class ThrFixProcessor extends BaseProcessor {
      * @param badFlag	"Y" if bad, "" if good, "?" if questionable
      */
     private void writeSampleData(PrintWriter writer, int num, SampleId sampleId, GrowthData growth, String badFlag) {
-        writer.format("%d\t%s\t%s\t%1.9f\t%1.9f\t%s\t%s\t%1.9f\t%1.9f\t%s\t%s%n",
-                num, growth.getOldStrain(), sampleId.toString(), growth.getProduction(), growth.getPrediction(),
-                format(growth.getDensity(), "%1.2f"), badFlag, growth.getNormalizedProduction(),
-                growth.getProductionRate(), growth.getOrigins(), growth.getProductionList());
+        writer.format("%d\t%s\t%s\t%1.9f\t%s\t%s\t%s\t%1.9f\t%1.9f\t%s\t%s%n",
+                num, growth.getOldStrain(), sampleId.toString(), growth.getProduction(),
+                format(growth.getPrediction(), "%1.4f"), format(growth.getDensity(), "%1.2f"),
+                badFlag, growth.getNormalizedProduction(), growth.getProductionRate(),
+                growth.getOrigins(), growth.getProductionList());
     }
 
     /**
