@@ -277,8 +277,6 @@ public class ThrSampleFormatter {
             while (this.originalIter.hasNext() && currentSet.isEmpty()) {
                 // Get the next sample to use as a base.
                 SampleId original = this.originalIter.next();
-                // If the original is invalid, skip it!
-                // TODO
                 // Prime it with the original.
                 this.generateDeletes(original, currentSet);
                 // Create samples by inserting.
