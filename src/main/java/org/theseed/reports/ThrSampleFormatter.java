@@ -46,7 +46,7 @@ public class ThrSampleFormatter {
     /** number of output columns for the sample description */
     private int numCols;
     /** choices for IPTG flag */
-    private static final String[] IPTG_CHOICES = new String[] { "0", "I" };
+    private static final String[] IPTG_CHOICES = new String[] { "I", "0" };
     /** choices for time point */
     private static final String[] TIME_POINTS = new String[] { "24" };
     /** choices for medium */
@@ -75,8 +75,8 @@ public class ThrSampleFormatter {
      */
     public void setupChoices(File choiceFile) throws IOException {
         int n = SampleId.numBaseFragments();
-        this.choices = new ArrayList<String[]>(n);
-        this.iChoices = new ArrayList<String[]>(n);
+        this.choices = new ArrayList<String[]>(n+2);
+        this.iChoices = new ArrayList<String[]>(n+2);
         this.insertSet = new TreeSet<String>();
         this.deleteSet = new TreeSet<String>();
         // This will hold the number of output columns required for a sample ID.  We start with 2, for the

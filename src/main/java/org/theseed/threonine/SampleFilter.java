@@ -25,6 +25,11 @@ public abstract class SampleFilter {
             public SampleFilter create(IParms processor) {
                 return new LowCostSampleFilter(processor);
             }
+        }, CHROMOSOME {
+            @Override
+            public SampleFilter create(IParms processor) {
+                return new ChromosomeSampleFilter(processor);
+            }
         };
 
         public abstract SampleFilter create(SampleFilter.IParms processor);
