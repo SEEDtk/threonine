@@ -25,6 +25,7 @@ import org.theseed.utils.BaseProcessor;
  * sampleCount	count strains and samples in a big production table
  * normalize	normalize the sample IDs in a file
  * layout		convert a layout file to a CSV showing all the wells
+ * analyze		analyze predictions vs. production for a particular run
  *
  */
 public class App
@@ -96,6 +97,9 @@ public class App
             break;
         case "layout" :
             processor = new LayoutProcessor();
+            break;
+        case "analyze" :
+            processor = new ProdAnalyzeProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);

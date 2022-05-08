@@ -6,7 +6,7 @@
     <property name="dir.buildfile" value="."/>
     <property name="dir.workspace" value="${dir.buildfile}/../.."/>
     <property name="dir.jarfile" value="${dir.workspace}/git/kernel/jars"/>
-	<property environment="env" />
+    <property environment="env" />
     <target name="create_run_jar">
         <jar destfile="${dir.jarfile}/threonine.jar" filesetmanifest="mergewithoutmain">
             <manifest>
@@ -86,8 +86,8 @@
             <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/org/apache/pdfbox/pdfbox/2.0.22/pdfbox-2.0.22.jar"/>
             <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/org/apache/pdfbox/fontbox/2.0.22/fontbox-2.0.22.jar"/>
             <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/org/apache/commons/commons-csv/1.8/commons-csv-1.8.jar"/>
-            <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/ch/qos/logback/logback-classic/1.2.3/logback-classic-1.2.3.jar"/>
-            <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/ch/qos/logback/logback-core/1.2.3/logback-core-1.2.3.jar"/>
+            <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/ch/qos/logback/logback-classic/1.2.10/logback-classic-1.2.10.jar"/>
+            <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/ch/qos/logback/logback-core/1.2.10/logback-core-1.2.10.jar"/>
         </jar>
     </target>
 </project>

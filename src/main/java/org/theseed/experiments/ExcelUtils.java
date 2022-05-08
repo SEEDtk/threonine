@@ -5,6 +5,7 @@ package org.theseed.experiments;
 
 import java.util.Iterator;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -28,7 +29,7 @@ public class ExcelUtils {
             switch (cell.getCellType()) {
             case STRING :
             case FORMULA :
-                retVal = cell.getStringCellValue();
+                retVal = StringUtils.trim(cell.getStringCellValue());
                 break;
             case NUMERIC :
                 retVal = Double.toString(cell.getNumericCellValue());

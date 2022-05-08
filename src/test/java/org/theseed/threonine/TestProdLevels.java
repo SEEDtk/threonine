@@ -36,4 +36,18 @@ public class TestProdLevels {
         }
     }
 
+    @Test
+    public void testGrowthData() {
+        GrowthData testGrowth = new GrowthData("sample1", 24.0);
+        testGrowth.merge(6.2152,  4.2400, "22Apr2.1.1", "E4");
+        testGrowth.merge(7.4610,  5.0400, "22Apr2.1.1", "E4");
+        testGrowth.merge(1.4500,  4.8600, "22Apr2.1.1", "E4");
+        testGrowth.removeBadZeroes(1.2);
+        boolean ok = testGrowth.removeOutlier(1.2);
+        assertThat(ok, equalTo(true));
+        assertThat(testGrowth.getOrigins(), equalTo("22Apr2.1.2A-D:E4, 22Apr2.1.1A-D:E4, (22Apr2.1.3A-D:E4)"));
+        assertThat(testGrowth.getProduction(), closeTo(6.8381, 0.0001));
+        assertThat(testGrowth.getDensity(), closeTo(9.2800, 0.0001));
+    }
+
 }

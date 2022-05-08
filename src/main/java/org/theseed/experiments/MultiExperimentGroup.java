@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -30,8 +31,25 @@ import org.slf4j.LoggerFactory;
  * numbered list items with format "upperletter"  and contain "0" (indicating no change), or an additional
  * modifier for the strain name.  There may also be override paragraphs beginning with a letter-number combination
  * and a period.  These are NOT list items, and contain strains that ignore the standard row and column rules.
- * At any point, a strain name of "Blank" indicates no organism in the well.  Finally, the IPTG paragraph is of
- * the form
+ * At any point, a strain name of "Blank" indicates no organism in the well.  Before the column paragraphs,
+ * there may also be abbreviation lines of the form
+ *
+ * 		X=string
+ *
+ * where "X" is a letter and "string" is a replacement string. When the letter appears at the end of a strain
+ * number, it is automatically replaced.  Thus, if
+ *
+ * 		A=ptac thrABC
+ *
+ * appears, then
+ *
+ * 		926A ppc aspC
+ *
+ * would become
+ *
+ * 		926 ptac thrABC ppc aspC
+ *
+ * Finally, the IPTG paragraph is of the form
  *
  * 		IPTG X=Y, X=Y, ..., X=Y
  *
@@ -49,6 +67,10 @@ public class MultiExperimentGroup extends ExperimentGroup {
     // FIELDS
     /** logging facility */
     protected static Logger log = LoggerFactory.getLogger(MultiExperimentGroup.class);
+    /** abbreviation definition pattern */
+    private static final Pattern ABBR_LINE = Pattern.compile("([A-Z])=(.+)");
+    /** abbreviation application pattern */
+    private static final Pattern ABBR_CALL = Pattern.compile("(\\d+)([A-Z])(\\s.+)");
     /** override time string in sample name */
     protected static final Pattern SAMPLE_NAME = Pattern.compile("0?(.+?)(?:\\s+(\\d+)[Hh])?\\s+([A-Z]\\d+)");
     /** array of well letters */
@@ -60,11 +82,13 @@ public class MultiExperimentGroup extends ExperimentGroup {
     /** pattern for IPTG line */
     private static final Pattern IPTG_LINE = Pattern.compile("IPTG\\s+(.+)");
     /** pattern for plate ID line */
-    private static final Pattern PLATE_LINE = Pattern.compile("Layout for sets?\\s+(.+)");
+    private static final Pattern PLATE_LINE = Pattern.compile("(?:Layout for sets?|Plates labell?ed)\\s+(.+)");
     /** pattern for non-ASCII characters */
     private static final Pattern BAD_CHARS = Pattern.compile("[^\\x00-\\x7F]");
     /** pattern for parsing time point from growth file name */
     private static final Pattern TIME_POINT = Pattern.compile(".+_(\\d+)h.+");
+    /** pattern for a numbered no-plasmid plate */
+    private static final Pattern NO_PLASMID_PLATE = Pattern.compile("no plasmid (\\d+)(.+)");
 
     /**
      * Construct the experiment group.
@@ -99,6 +123,8 @@ public class MultiExperimentGroup extends ExperimentGroup {
         Map<String, String> strainMap = new HashMap<String, String>(100);
         // This is where we put the plate IDs.
         Set<String> plates = null;
+        // This will hold the abbreviation data.
+        Map<String, String> abbrMap = new TreeMap<String, String>();
         // Get access to the word document.
         try (FileInputStream fileStream = new FileInputStream(layoutFile);
             XWPFDocument document = new XWPFDocument(fileStream)) {
@@ -120,60 +146,67 @@ public class MultiExperimentGroup extends ExperimentGroup {
                     // Here we have a row or column.  Do the IPTG safety check, then figure out which it is.
                     if (iptgFound)
                         throw new IOException("Cannot have row or column data following IPTG paragraph.");
-                       switch (numFmt) {
-                       case "upperLetter" :
-                       case "lowerLetter" :
-                           // Here we have a row.
-                           rowStrings[row] = line;
-                           row++;
-                           break;
-                       case "decimal" :
-                           // Here we have a column.
-                           colStrings[col] = line;
-                           col++;
-                           break;
+                    else {
+                        switch (numFmt) {
+                        case "upperLetter" :
+                        case "lowerLetter" :
+                            // Here we have a row.
+                            rowStrings[row] = line;
+                            row++;
+                            break;
+                        case "decimal" :
+                            // Here we have a column.
+                            colStrings[col] = this.abbrCheck(abbrMap, line);
+                            col++;
+                            break;
+                        }
                     }
                 } else {
-                    // Here we have a special case:  an override, or an IPTG spec.
-                    Matcher m = OVERRIDE_LINE.matcher(line);
-                    if (m.matches()) {
-                        if (iptgFound)
-                            throw new IOException("Cannot have override data following IPTG paragraph.");
-                        // Store overrides directly in the strain map.
-                        strainMap.put(m.group(1), m.group(2));
-                    } else {
-                        m = PLATE_LINE.matcher(line);
+                    // Here we have a special case:  an abbreviation, an override, or an IPTG spec.
+                    Matcher m = ABBR_LINE.matcher(line);
+                    if (m.matches())
+                        abbrMap.put(m.group(1), m.group(2));
+                    else {
+                        m = OVERRIDE_LINE.matcher(line);
                         if (m.matches()) {
-                            String plateString = StringUtils.removeEnd(m.group(1), ".");
-                            plates = Set.of(plateString.split(",\\s*"));
-                            for (String plate : plates)
-                                this.createExperiment(plate);
-                            log.info("Processing plate layout.  Experiment list: {}.", StringUtils.join(plates, ", "));
+                            if (iptgFound)
+                                throw new IOException("Cannot have override data following IPTG paragraph.");
+                            // Store overrides directly in the strain map.
+                            strainMap.put(m.group(1), m.group(2));
                         } else {
-                            m = IPTG_LINE.matcher(line);
+                            m = PLATE_LINE.matcher(line);
                             if (m.matches()) {
-                                // Here we have an IPTG line.  The line contains instructions for copying rows.
-                                // The copied row contains the old strain string with a suffix of " +IPTG".
-                                String[] maps = m.group(1).split(",\\s+");
-                                for (String map : maps) {
-                                    String to = map.substring(0, 1);
-                                    String from = map.substring(2, 3);
-                                    // Map the row string.  Here we find the proper array indices.
-                                    int fromIdx = Arrays.binarySearch(LETTERS, from);
-                                    int toIdx = Arrays.binarySearch(LETTERS, to);
-                                    if (fromIdx < 0 || toIdx < 0)
-                                        throw new IOException("Invalid IPTG mapping \"" + map + "\" found.");
-                                    rowStrings[toIdx] = rowStrings[fromIdx] + " +IPTG";
-                                    // Update the overrides.  Each override key that has the from-letter gets changed
-                                    // to the to-letter and the IPTG suffix is added to the strain string.  Blanks are
-                                    // not changed. (Blank +IPTG is the same as Blank.)
-                                    List<String> wellsToChange = strainMap.keySet().stream()
-                                            .filter(x -> x.startsWith(from)).collect(Collectors.toList());
-                                    for (String well : wellsToChange) {
-                                        String strain = strainMap.get(well);
-                                        if (! strain.contentEquals("Blank"))
-                                            strain += " +IPTG";
-                                        strainMap.put(to + well.substring(1), strain);
+                                String plateString = StringUtils.removeEnd(m.group(1), ".");
+                                plates = Set.of(plateString.split(",\\s*"));
+                                for (String plate : plates)
+                                    this.createExperiment(plate);
+                                log.info("Processing plate layout.  Experiment list: {}.", StringUtils.join(plates, ", "));
+                            } else {
+                                m = IPTG_LINE.matcher(line);
+                                if (m.matches()) {
+                                    // Here we have an IPTG line.  The line contains instructions for copying rows.
+                                    // The copied row contains the old strain string with a suffix of " +IPTG".
+                                    String[] maps = m.group(1).split(",\\s+");
+                                    for (String map : maps) {
+                                        String to = map.substring(0, 1);
+                                        String from = map.substring(2, 3);
+                                        // Map the row string.  Here we find the proper array indices.
+                                        int fromIdx = Arrays.binarySearch(LETTERS, from);
+                                        int toIdx = Arrays.binarySearch(LETTERS, to);
+                                        if (fromIdx < 0 || toIdx < 0)
+                                            throw new IOException("Invalid IPTG mapping \"" + map + "\" found.");
+                                        rowStrings[toIdx] = rowStrings[fromIdx] + " +IPTG";
+                                        // Update the overrides.  Each override key that has the from-letter gets changed
+                                        // to the to-letter and the IPTG suffix is added to the strain string.  Blanks are
+                                        // not changed. (Blank +IPTG is the same as Blank.)
+                                        List<String> wellsToChange = strainMap.keySet().stream()
+                                                .filter(x -> x.startsWith(from)).collect(Collectors.toList());
+                                        for (String well : wellsToChange) {
+                                            String strain = strainMap.get(well);
+                                            if (! strain.contentEquals("Blank"))
+                                                strain += " +IPTG";
+                                            strainMap.put(to + well.substring(1), strain);
+                                        }
                                     }
                                 }
                             }
@@ -228,6 +261,27 @@ public class MultiExperimentGroup extends ExperimentGroup {
     }
 
     /**
+     * @return the input line with any abbreviations applied
+     *
+     * @param abbrMap	abbreviation map, mapping capital letters to replacement strings
+     * @param line		input line to process
+     * @throws IOException
+     */
+    private String abbrCheck(Map<String, String> abbrMap, String line) throws IOException {
+        String retVal;
+        Matcher m = ABBR_CALL.matcher(line);
+        if (! m.matches())
+            retVal = line;
+        else {
+            String replacement = abbrMap.get(m.group(2));
+            if (replacement == null)
+                throw new IOException("Invalid abbreviation character in \"" + line + "\".");
+            retVal = m.group(1) + " " + replacement + m.group(3);
+        }
+        return retVal;
+    }
+
+    /**
      * @return the text representation of the paragraph
      *
      * @param para	paragraph to convert to text
@@ -248,10 +302,16 @@ public class MultiExperimentGroup extends ExperimentGroup {
         ExperimentGroup.SampleDesc retVal = null;
         // Sometimes there is a "plate" prefix we have to remove.
         String trimmed = StringUtils.removeStart(data, "PLATE ");
-        Matcher m = SAMPLE_NAME.matcher(trimmed);
+        // In addition, there is special translation for "NO PLASMID" plus a number..
+        Matcher m = NO_PLASMID_PLATE.matcher(trimmed);
+        if (m.matches())
+            trimmed = "NONE" + m.group(1) + m.group(2);
+        m = SAMPLE_NAME.matcher(trimmed);
         if (m.matches()) {
             // Trim the time from the set ID (if any).
             String setId = m.group(1);
+            if (setId.contains(" "))
+                setId = StringUtils.replace(setId, " ", "");
             double time = this.getTimePoint();
             if (m.group(2) != null)
                 time = Integer.valueOf(m.group(2));

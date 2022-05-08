@@ -77,7 +77,7 @@ public class ThrSetBuildProcessor extends BaseProcessor {
     protected void runCommand() throws Exception {
         // Get a list of the subdirectories.
         File[] subDirs = this.inDir.listFiles(File::isDirectory);
-        log.info("{} subdirectories found in {}.", this.inDir);
+        log.info("{} subdirectories found in {}.", subDirs.length, this.inDir);
         // Start the output file.
         try (PrintWriter writer = new PrintWriter(outFile)) {
             int valueCount = 0;
@@ -96,7 +96,7 @@ public class ThrSetBuildProcessor extends BaseProcessor {
                 else if (setMarker.exists())
                     group = new SetExperimentGroup(subDir, subDir.getName());
                 if (group == null)
-                    log.info("Subdirectory {} does not appear to contain an experiment group:  no type marker found.");
+                    log.info("Subdirectory {} does not appear to contain an experiment group:  no type marker found.", subDir);
                 else {
                     // Set the start column.
                     group.setStartCol(this.startCol);

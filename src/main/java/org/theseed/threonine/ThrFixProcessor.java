@@ -297,7 +297,7 @@ public class ThrFixProcessor extends BaseProcessor {
         // Write the results.
         log.info("Producing output to {}.", this.outFile);
         try (PrintWriter writer = new PrintWriter(this.outFile)) {
-            writer.println("num\told_strain\tsample\tthr_production\tprediction\tdensity\tbad\tthr_normalized\tthr_rate\torigins\traw_productions");
+            writer.println("num\told_strain\tsample\tthr_production\tprediction\tdensity\tbad\tthr_normalized\tthr_rate\torigins\traw_productions\traw_densities");
             int num = 0;
             for (Map.Entry<SampleId, GrowthData> sampleEntry : this.growthMap.entrySet()) {
                 SampleId sampleId = sampleEntry.getKey();
@@ -361,11 +361,11 @@ public class ThrFixProcessor extends BaseProcessor {
      * @param badFlag	"Y" if bad, "" if good, "?" if questionable
      */
     private void writeSampleData(PrintWriter writer, int num, SampleId sampleId, GrowthData growth, String badFlag) {
-        writer.format("%d\t%s\t%s\t%1.9f\t%s\t%s\t%s\t%1.9f\t%1.9f\t%s\t%s%n",
+        writer.format("%d\t%s\t%s\t%1.9f\t%s\t%s\t%s\t%1.9f\t%1.9f\t%s\t%s\t%s%n",
                 num, growth.getOldStrain(), sampleId.toString(), growth.getProduction(),
                 format(growth.getPrediction(), "%1.4f"), format(growth.getDensity(), "%1.2f"),
                 badFlag, growth.getNormalizedProduction(), growth.getProductionRate(),
-                growth.getOrigins(), growth.getProductionList());
+                growth.getOrigins(), growth.getProductionList(), growth.getGrowthList());
     }
 
     /**

@@ -239,13 +239,29 @@ public class GrowthData implements Comparable<GrowthData> {
      * @return a displayable list of production values
      */
     public String getProductionList() {
-        String[] productions = new String[this.production.size()];
+        return getNumberList(this.production);
+    }
+
+    /**
+     * @return a displayable list of growth values
+     */
+    public String getGrowthList() {
+        return getNumberList(this.density);
+    }
+
+    /**
+     * @return a displayable list of values from the specified list
+     *
+     * @param input		list of values, in parallel with goodLevels
+     */
+    protected String getNumberList(List<Double> input) {
+        String[] values = new String[input.size()];
         for (int i = 0; i < this.production.size(); i++) {
-            productions[i] = String.format("%6.4f", this.production.get(i));
+            values[i] = String.format("%6.4f", input.get(i));
             if (! this.goodLevels.get(i))
-                productions[i] = "(" + productions[i] + ")";
+                values[i] = "(" + values[i] + ")";
         }
-        return StringUtils.join(productions, ',');
+        return StringUtils.join(values, ',');
     }
 
     /**
