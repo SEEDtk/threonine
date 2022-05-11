@@ -21,16 +21,17 @@ public class SugarUsage {
     private static double BASE_LEVEL = 35.0;
     /** error limit level */
     private static double MAX_LEVEL = 38.5;
+    /** default error factor */
+    private static double ERROR_FACTOR = 1.1;
 
     /**
      * Store the base sugar level and the maximum level for validation.
      *
      * @param base_level	base sugar level
-     * @param error			error factor (1.1 indicates 10% error allowed)
      */
-    public static void setLevels(double base_level, double error) {
+    public static void setLevels(double base_level) {
         BASE_LEVEL = base_level;
-        MAX_LEVEL = base_level * error;
+        MAX_LEVEL = base_level * ERROR_FACTOR;
     }
 
     /**
@@ -56,6 +57,10 @@ public class SugarUsage {
      */
     public boolean isSuspicious() {
         return this.suspicious;
+    }
+
+    public static void setErrorLevel(double errorFactor) {
+        ERROR_FACTOR = errorFactor;
     }
 
 

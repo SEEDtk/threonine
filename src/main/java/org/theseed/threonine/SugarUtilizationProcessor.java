@@ -9,12 +9,13 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -44,20 +45,20 @@ import org.theseed.utils.ParseFailureException;
  *
  * Note that the master sample list is output by ThrFixProcessor.
  *
- * The positional parameters are the name of the input directory, the name of the master sample file,
- * and the base glucose level amount.
+ * The positional parameters are the name of the input directory and the name of the master sample file.
  *
  * The input directory must contain a tab-delimited file "map.txt" that describes the input spreadsheets.
  * The file has two columns-- "plate" which contains a plate ID, "time" which contains a time point
  * number, and "file" which contains the name of the Excel file containing the experiment results.
  * The excel file contains the results in a plate grid, with numbers assigned to the columns and letters
- * A-H to the rows.  The grid of interest is near the bottom of the sheet and is distinguished by having
- * two blank cells followed by a formula cell.
+ * A-H to the rows.  The grid of interest is near the bottom of the sheet and is distinguished by a marker
+ * string ending with " g/L".
  *
  * The usage is computed by subtracting the cell value from the base level amount.  If the cell value is
  * greater than the base level amount by less than 10%, it is flattened to zero.  If the cell value is
  * greater by more than that, it is flagged as suspect and flattened to zero.  Suspect values are flagged
- * in the output report.
+ * in the output report.  The base level amount is computed by taking the mean of the values for column
+ * 11 of the plate.
  *
  * The map file will be read first.  For each well, a well ID will be assigned consisting of the plate ID,
  * the well address, and the time point.  These will be mapped to the sugar usage.  The master sample file will
@@ -115,10 +116,6 @@ public class SugarUtilizationProcessor extends BaseReportProcessor {
             required = true)
     private File masterFile;
 
-    /** base sugar level */
-    @Argument(index = 2, metaVar = "baseLevel", usage = "base sugar level (numeric in g/L)", required = true)
-    private double baseLevel;
-
     @Override
     protected void setReporterDefaults() {
         this.errorFactor = 1.1;
@@ -149,7 +146,7 @@ public class SugarUtilizationProcessor extends BaseReportProcessor {
     @Override
     protected void runReporter(PrintWriter writer) throws Exception {
         // Build the well map from the spreadsheets.
-        SugarUsage.setLevels(this.baseLevel, this.errorFactor);
+        SugarUsage.setErrorLevel(this.errorFactor);
         Map<WellDescriptor, SugarUsage> wellMap = this.buildWellMap();
         // Now we read the master file and create the output.  Start with the output header.
         writer.println("sample_id\torigin\tproduction\tusage\tutilization\tmole_util\tyield\tmole_yield\tsuspect");
@@ -262,34 +259,49 @@ public class SugarUtilizationProcessor extends BaseReportProcessor {
             Sheet plateSheet = plateBook.getSheetAt(0);
             // This value will contain the well letter for the next row.
             char rowLetter = 'A';
-            // Loop through the sheet, finding grid rows.
-            int rowsFound = 0;
+            // Loop through the sheet, finding the grid.
+            boolean gridFound = false;
             int rowsChecked = 0;
             Iterator<Row> rowIter = plateSheet.rowIterator();
-            while (rowIter.hasNext()) {
-                Row currentRow = rowIter.next();
+            while (rowIter.hasNext() && ! gridFound) {
                 rowsChecked++;
-                Cell cell0 = currentRow.getCell(0);
-                Cell cell1 = currentRow.getCell(1);
-                Cell cell2 = currentRow.getCell(2);
-                if (ExcelUtils.stringValue(cell0).isEmpty() && ExcelUtils.stringValue(cell1).isEmpty() &&
-                        cell2.getCellType() == CellType.FORMULA) {
-                    // Here we have a grid row.  Loop through the wells.
-                    for (int i = 1; i <= 12; i++) {
-                        String wellAddress = String.format("%c%d", rowLetter, i);
-                        WellDescriptor well = new WellDescriptor(plateId, wellAddress, timePoint);
-                        Cell cellW = currentRow.getCell(i + 1);
-                        double level = ExcelUtils.numValue(cellW);
-                        if (level < 0.0) level = 0.0;
-                        SugarUsage usage = new SugarUsage(level);
-                        wellMap.put(well, usage);
-                    }
-                    // Set up for the next row.
-                    rowLetter++;
-                    rowsFound++;
-                }
+                Cell cell0 = rowIter.next().getCell(0);
+                gridFound = ExcelUtils.stringValue(cell0).endsWith(" g/L");
             }
-            log.info("{} rows checked, {} grid rows found.", rowsChecked, rowsFound);
+            if (! gridFound)
+                throw new IOException("No sugar "
+                        + "grid found in " + plateFile);
+            // Skip the title row.
+            rowIter.next();
+            // This will save the grid rows.  We need two passes-- one to compute the base level,
+            // another for the actual computation.
+            double baseLevel = 0.0;
+            List<Row> gridRows = new ArrayList<Row>(8);
+            for (int i = 0; i < 8; i++) {
+                Row currentRow = rowIter.next();
+                gridRows.add(currentRow);
+                double level = ExcelUtils.numValue(currentRow.getCell(12));
+                baseLevel += level;
+                rowsChecked++;
+            }
+            baseLevel /= 8.0;
+            SugarUsage.setLevels(baseLevel);
+            // Now loop through the rows getting the real sugar data.
+            for (Row currentRow : gridRows) {
+                // Here we have a grid row.  Loop through the wells.
+                for (int i = 1; i <= 12; i++) {
+                    String wellAddress = String.format("%c%d", rowLetter, i);
+                    WellDescriptor well = new WellDescriptor(plateId, wellAddress, timePoint);
+                    Cell cellW = currentRow.getCell(i + 1);
+                    double level = ExcelUtils.numValue(cellW);
+                    if (level < 0.0) level = 0.0;
+                    SugarUsage usage = new SugarUsage(level);
+                    wellMap.put(well, usage);
+                }
+                // Set up for the next row.
+                rowLetter++;
+            }
+            log.info("{} rows checked, base level {}.", rowsChecked, baseLevel);
         }
     }
 
