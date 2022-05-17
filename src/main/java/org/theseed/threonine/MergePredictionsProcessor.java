@@ -29,7 +29,7 @@ import org.theseed.utils.ParseFailureException;
 
 /**
  * This method reads a predictions file containing both predicted and expected threonine data and a
- * prediction file of virtualsamples containing only sample IDs and predictions.  The expected data
+ * prediction file of virtual samples containing only sample IDs and predictions.  The expected data
  * will be added to samples for which it is available.  This cannot be done with a text-based join,
  * since multiple sample IDs can represent the same sample.  The positional parameters are the name
  * of the virtual-sample prediction file and the name of the real-sample prediction file

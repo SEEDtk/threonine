@@ -26,6 +26,7 @@ import org.theseed.utils.BaseProcessor;
  * normalize	normalize the sample IDs in a file
  * layout		convert a layout file to a CSV showing all the wells
  * analyze		analyze predictions vs. production for a particular run
+ * bigRuns		add run-based predictions to the big production table
  *
  */
 public class App
@@ -100,6 +101,9 @@ public class App
             break;
         case "analyze" :
             processor = new ProdAnalyzeProcessor();
+            break;
+        case "bigRuns" :
+            processor = new BigRunProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
