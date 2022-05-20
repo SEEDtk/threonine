@@ -5,6 +5,7 @@ package org.theseed.reports;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.OptionalDouble;
@@ -308,6 +309,13 @@ public class PredictionAnalyzer {
     public double getMAE() {
         OptionalDouble retVal = this.samples.stream().mapToDouble(x -> x.getAbsError()).average();
         return retVal.orElse(0.0);
+    }
+
+    /**
+     * @return the list of prediction/production pairs
+     */
+    public Collection<PredProd> getAllSamples() {
+        return this.samples;
     }
 
 }

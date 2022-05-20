@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.math3.stat.correlation.PearsonsCorrelation;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
@@ -26,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import org.theseed.counters.CountMap;
 import org.theseed.excel.CustomWorkbook;
 import org.theseed.io.TabbedLineReader;
+import org.theseed.reports.PredProd;
 import org.theseed.reports.PredictionAnalyzer;
 import org.theseed.samples.SampleId;
 import org.theseed.utils.BaseProcessor;
@@ -88,6 +90,8 @@ public class BigRunProcessor extends BaseProcessor {
     private Map<Double, CountMap<String>> countMapMap;
     /** cutoff counts */
     private CountMap<Double> countMapTotals;
+    /** pearson correlation engine */
+    private final PearsonsCorrelation computer = new PearsonsCorrelation();
 
 
     // COMMAND-LINE OPTIONS
@@ -131,6 +135,8 @@ public class BigRunProcessor extends BaseProcessor {
         private double auc;
         /** maximum prediction */
         private double maxPred;
+        /** maximum production */
+        private double maxProdAll;
         /** number of samples for this run */
         private int runSize;
 
@@ -150,6 +156,7 @@ public class BigRunProcessor extends BaseProcessor {
             this.analyzer = new PredictionAnalyzer();
             this.analyzer1 = new PredictionAnalyzer();
             this.runSize = 0;
+            this.maxProdAll = 0;
         }
 
         /**
@@ -296,7 +303,7 @@ public class BigRunProcessor extends BaseProcessor {
         }
 
         /**
-         * @return the maximum production value for this run
+         * @return the maximum production value for predicted samples in this run
          */
         public double getMaxProd() {
             return this.analyzer.getMaxProd();
@@ -314,6 +321,40 @@ public class BigRunProcessor extends BaseProcessor {
          */
         public int getRunSize() {
             return this.runSize;
+        }
+
+        /**
+         * @return the pearson coefficient for the first-run predictions
+         */
+        public double getPearson() {
+            var predProds = this.analyzer1.getAllSamples();
+            double[] preds = new double[predProds.size()];
+            double[] prods = new double[predProds.size()];
+            int i = 0;
+            for (PredProd predProd : predProds) {
+                preds[i] = predProd.getPrediction();
+                prods[i] = predProd.getProduction();
+                i++;
+            }
+            double retVal = BigRunProcessor.this.computer.correlation(preds, prods);
+            return retVal;
+        }
+
+        /**
+         * @return the maximum production for the run
+         */
+        public double getMaxProdAll() {
+            return this.maxProdAll;
+        }
+
+        /**
+         * Update the maximum production for the run.
+         *
+         * @param prod		production level
+         */
+        public void setMaxProdAll(double prod) {
+            if (prod > this.maxProdAll)
+                this.maxProdAll = prod;
         }
 
     }
@@ -400,6 +441,7 @@ public class BigRunProcessor extends BaseProcessor {
                 } else {
                     firstRun = this.runs[run1].getName();
                     this.runs[run1].count();
+                    this.runs[run1].setMaxProdAll(production);
                 }
                 // Compute the max production from the raw productions, skipping the questionable ones.
                 double maxProduction = 0.0;
@@ -461,8 +503,9 @@ public class BigRunProcessor extends BaseProcessor {
                     // Here we have predictions to plot.  Create a sheet to hold them.
                     log.info("Creating prediction sheet for {}.", run.getName());
                     workbook.addSheet(run.getName(), true);
-                    workbook.setHeaders(Arrays.asList("pred_level", "tp", "fp", "tn", "fn",
-                            "sensitivity", "miss_rate", "fallout", "accuracy"));
+                    List<String> headers = Arrays.asList("pred_level", "tp", "fp", "tn", "fn",
+                            "sensitivity", "miss_rate", "fallout", "accuracy");
+                    workbook.setHeaders(headers);
                     // Get the prediction levels.
                     double[] predLevels = run.getAllPredictions();
                     run.setMaxPred(predLevels[0]);
@@ -488,6 +531,18 @@ public class BigRunProcessor extends BaseProcessor {
                     }
                     // Fix the column widths.
                     workbook.autoSizeColumns();
+                    // Now we need to store the pred/prod columns for the first-run samples.  These
+                    // are in columns past the right edge of the table, with a spacer in between.
+                    int c0 = headers.size() + 1;
+                    int c1 = c0 + 1;
+                    workbook.storeCell(0, c0, "production");
+                    workbook.storeCell(0, c1, "prediction");
+                    int r = 1;
+                    for (PredProd pair : run.analyzer1.getAllSamples()) {
+                        workbook.storeCell(r, c0, pair.getProduction(), CustomWorkbook.Num.FRACTION);
+                        workbook.storeCell(r, c1, pair.getPrediction(), CustomWorkbook.Num.FRACTION);
+                        r++;
+                    }
                     // Compute and save the AUC.  We use a simple trapezoidal rule.
                     var iter = roc.iterator();
                     double auc = 0.0;
@@ -513,9 +568,10 @@ public class BigRunProcessor extends BaseProcessor {
                 workbook.addRow();
                 workbook.storeCell(run.getName());
                 workbook.storeCell(run.getRunSize());
+                workbook.storeCell(run.getMaxProdAll());
                 if (! run.hasPredictions()) {
                     // No predictions:  blank the row.
-                    IntStream.range(2, headers.size()).forEach(i -> workbook.storeBlankCell());
+                    IntStream.range(3, headers.size()).forEach(i -> workbook.storeBlankCell());
                 } else {
                     // We have predictions.  Get the first-run analyzer.
                     var analyzer1 = run.getAnalyzer1();
@@ -525,10 +581,12 @@ public class BigRunProcessor extends BaseProcessor {
                     workbook.storeCell(run.getMaxPred());
                     workbook.storeCell(analyzer1.getMaxProd());
                     workbook.storeCell(run.getAuc());
+                    workbook.storeCell(run.getPearson());
                     // Compute the prediction success rates.
                     for (int i = 0; i < n; i++) {
                         var m = analyzer1.getMatrix(this.cutoffs.get(i));
                         workbook.storeCell(m.sensitivity());
+                        workbook.storeCell(m.falsePositiveCount() + m.truePositiveCount());
                     }
                 }
             }
@@ -580,13 +638,17 @@ public class BigRunProcessor extends BaseProcessor {
         List<String> retVal = new ArrayList<String>(7 + n);
         retVal.add("run");
         retVal.add("size");
+        retVal.add("max_prod_all");
         retVal.add("predictions");
         retVal.add("predictions_run");
         retVal.add("max_pred");
         retVal.add("max_prod");
         retVal.add("AUC");
-        for (int i = 0; i < n; i++)
+        retVal.add("Pearson");
+        for (int i = 0; i < n; i++) {
             retVal.add(String.format("success_%2.1f", this.cutoffs.get(i)));
+            retVal.add(String.format("predicted_%2.1f", this.cutoffs.get(i)));
+        }
         return retVal;
     }
 
