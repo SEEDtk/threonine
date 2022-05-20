@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -22,6 +23,7 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.counters.CountMap;
 import org.theseed.excel.CustomWorkbook;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.PredictionAnalyzer;
@@ -52,6 +54,9 @@ import org.theseed.utils.ParseFailureException;
  * we display the fraction of first-run samples predicted to be above the cutoff that were actuall above the
  * cutoff.
  *
+ * Finally, we will total all the component counts for each cutoff, as well as a special one for the cutoff of
+ * 0 that counts everything.
+ *
  * The output file will be an Excel spreadsheet.  The first sheet will contain the updated big production table.
  * There will be one additional sheet per prediction file, containing ROC information for each run.
  *
@@ -79,6 +84,10 @@ public class BigRunProcessor extends BaseProcessor {
     private Map<SampleId, double[]> predMap;
     /** list of cutoff scores for enrichment computation */
     private FloatList cutoffs;
+    /** component counts */
+    private Map<Double, CountMap<String>> countMapMap;
+    /** cutoff counts */
+    private CountMap<Double> countMapTotals;
 
 
     // COMMAND-LINE OPTIONS
@@ -328,6 +337,13 @@ public class BigRunProcessor extends BaseProcessor {
 
     @Override
     protected void runCommand() throws Exception {
+        // Set up the map of count maps, one per cutoff.
+        this.countMapMap = new TreeMap<Double, CountMap<String>>();
+        this.countMapMap.put(0.0, new CountMap<String>());
+        for (Double val : this.cutoffs)
+            this.countMapMap.put(val, new CountMap<String>());
+        this.countMapTotals = new CountMap<Double>();
+        // Set up the files.
         log.info("Processing control file.");
         this.processControlFile();
         log.info("Creating Excel workbook.");
@@ -354,6 +370,15 @@ public class BigRunProcessor extends BaseProcessor {
                 // Get the sample ID.
                 String sampleId = line.get(sampleCol);
                 SampleId sample = new SampleId(sampleId);
+                // Update the counts.
+                double production = line.getDouble(prodCol);
+                for (Map.Entry<Double, CountMap<String>> countMap : this.countMapMap.entrySet()) {
+                    final Double cutoffKey = countMap.getKey();
+                    if (cutoffKey <= production) {
+                        sample.countParts(countMap.getValue());
+                        this.countMapTotals.count(cutoffKey);
+                    }
+                }
                 // Get the origin and raw-production strings.
                 String origins = line.get(originsCol);
                 String rawProductions = line.get(rawProdCol);
@@ -397,7 +422,6 @@ public class BigRunProcessor extends BaseProcessor {
                 workbook.storeCell(firstRun);
                 String badFlag = line.get(badCol);
                 workbook.storeCell(badFlag);
-                double production = line.getDouble(prodCol);
                 workbook.storeCell(production);
                 workbook.storeCell(maxProduction);
                 // Store the predictions.  Note NaN means no prediction was made.  A prediction
@@ -509,8 +533,43 @@ public class BigRunProcessor extends BaseProcessor {
                 }
             }
             workbook.autoSizeColumns();
+            // Finally, we have the component count sheet.  We have a column for the component titles and a column
+            // for each cutoff.  Each component is a row, and the final row is for totals.
+            log.info("Creating component count page.");
+            workbook.addSheet("components", true);
+            workbook.setHeaders(this.computeCountHeaders());
+            // Now we need to build the component list.  This is the union of all the key sets.
+            var components = new TreeSet<String>();
+            this.countMapMap.values().forEach(x -> components.addAll(x.keys()));
+            // We are ready to build the component count page.  Loop through the components.  Each is a row.
+            for (String component : components) {
+                workbook.addRow();
+                workbook.storeCell(component);
+                // Extract the base count for percentages.
+                var base = this.countMapMap.get(0.0).getCount(component);
+                for (Map.Entry<Double, CountMap<String>> countMapEntry : this.countMapMap.entrySet()) {
+                    var count = countMapEntry.getValue().getCount(component);
+                    workbook.storeCell(count);
+                    if (countMapEntry.getKey() > 0.0) {
+                        if (base == 0)
+                            workbook.storeBlankCell();
+                        else {
+                            double pct = count * 100.0 / base;
+                            workbook.storeCell(pct);
+                        }
+                    }
+                }
+            }
+            // Finally, the total row.
+            workbook.addRow();
+            workbook.storeCell("TOTAL");
+            for (Double cutoff : this.countMapMap.keySet()) {
+                workbook.storeCell(this.countMapTotals.count(cutoff));
+                if (cutoff > 0.0)
+                    workbook.storeBlankCell();
+            }
+            workbook.autoSizeColumns();
         }
-
     }
 
     /**
@@ -528,6 +587,21 @@ public class BigRunProcessor extends BaseProcessor {
         retVal.add("AUC");
         for (int i = 0; i < n; i++)
             retVal.add(String.format("success_%2.1f", this.cutoffs.get(i)));
+        return retVal;
+    }
+
+    /**
+     * @return the list of headers for the component spreadsheet table
+     */
+    private List<String> computeCountHeaders() {
+        final int n = this.cutoffs.size();
+        List<String> retVal = new ArrayList<String>(2 + n);
+        retVal.add("component");
+        for (double val : this.countMapMap.keySet()) {
+            retVal.add(String.format("cutoff_%2.1f", val));
+            if (val > 0.0)
+                retVal.add(String.format("pct_%2.1f", val));
+        }
         return retVal;
     }
 
