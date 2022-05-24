@@ -29,6 +29,7 @@ import org.theseed.excel.CustomWorkbook;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.PredProd;
 import org.theseed.reports.PredictionAnalyzer;
+import org.theseed.reports.ThrSampleFormatter;
 import org.theseed.samples.SampleId;
 import org.theseed.utils.BaseProcessor;
 import org.theseed.utils.FloatList;
@@ -70,7 +71,9 @@ import org.theseed.utils.ParseFailureException;
  * -h	display command-line usage
  * -v	display more frequent log messages
  *
- * --scores	list of cutoff scores to use for enrichment computation (default 1.2, 2.0, 4.0)
+ * --scores		list of cutoff scores to use for enrichment computation (default 1.2, 2.0, 4.0)
+ * --choices	choice file used to build xmatrix (default: choices.tbl in the same directory as the run
+ * 				control file)
  *
  * @author Bruce Parrello
  *
@@ -90,6 +93,8 @@ public class BigRunProcessor extends BaseProcessor {
     private Map<Double, CountMap<String>> countMapMap;
     /** cutoff counts */
     private CountMap<Double> countMapTotals;
+    /** production formatter for xmatrix sheet */
+    private ThrSampleFormatter formatter;
     /** pearson correlation engine */
     private final PearsonsCorrelation computer = new PearsonsCorrelation();
 
@@ -99,6 +104,10 @@ public class BigRunProcessor extends BaseProcessor {
     /** list of cutoff scores for enrichment computation */
     @Option(name = "--scores", metaVar = "1.2,2.0", usage = "comma-delimited list of cutoff scores to test")
     private String scoreList;
+
+    /** name of the choice table */
+    @Option(name = "--choices", metaVar = "choices.tbl", usage = "name of the choice file used to generate ML input files")
+    private File  choiceFile;
 
     /** name of the file containing the big production table */
     @Argument(index = 0, metaVar = "big_production_master.tbl", usage = "name of file containing big production table",
@@ -362,6 +371,7 @@ public class BigRunProcessor extends BaseProcessor {
     @Override
     protected void setDefaults() {
         this.scoreList = "1.2,2.0,4.0";
+        this.choiceFile = null;
     }
 
     @Override
@@ -373,6 +383,14 @@ public class BigRunProcessor extends BaseProcessor {
             throw new FileNotFoundException("Production file " + this.bigProdFile + " is not found or unreadable.");
         if (! this.runFile.canRead())
             throw new FileNotFoundException("Run control file " + this.runFile + " is not found or unreadable.");
+        // Check the choice file and create the sample formatter.
+        if (this.choiceFile == null)
+            this.choiceFile = new File(this.runFile.getParentFile(), "choices.tbl");
+        if (! this.choiceFile.canRead())
+            throw new FileNotFoundException("Choices file " + this.choiceFile + " is not found or unreadable.");
+        log.info("Initializing xmatrix formatter.");
+        this.formatter = new ThrSampleFormatter();
+        this.formatter.setupChoices(this.choiceFile);
         return true;
     }
 
@@ -390,12 +408,21 @@ public class BigRunProcessor extends BaseProcessor {
         log.info("Creating Excel workbook.");
         try (CustomWorkbook workbook = CustomWorkbook.create(this.outFile);
                 TabbedLineReader bigProdStream = new TabbedLineReader(this.bigProdFile)) {
-            // Create the output sheet for the master table.
-            workbook.addSheet("production_report", true);
+            // We have a workbook sheet for the master table and one for each run.
+            var mainSheet = workbook.new Sheet("full_report", true);
+            var sheetMap = new TreeMap<String, CustomWorkbook.Sheet>();
+            for (RunDescriptor run : this.runs)
+                sheetMap.put(run.getName(), workbook.new Sheet(run.getName() + "_report", true));
+            // Put an entry for the main sheet in the map so we have them all together.
+            sheetMap.put("(main)", mainSheet);
+            //  Finally, a sheet for the x-matrix.
+            var matrixSheet = workbook.new Sheet("xmatrix", true);
             // Set the precision to 4.
             workbook.setPrecision(4);
-            // Compute the prediction headers.
-            workbook.setHeaders(this.computeTableHeaders());
+            // Set the headers for the production tables.
+            var headers1 = this.computeTableHeaders();
+            sheetMap.values().stream().forEach(x -> x.setHeaders(headers1));
+            matrixSheet.setHeaders(this.computeMatrixHeaders());
             // Compute the input column indices.
             int numCol = bigProdStream.findField("num");
             int oldStrainCol = bigProdStream.findField("old_strain");
@@ -407,6 +434,7 @@ public class BigRunProcessor extends BaseProcessor {
             int rawProdCol = bigProdStream.findField("raw_productions");
             int rawDensCol = bigProdStream.findField("raw_densities");
             // Now loop through the input.
+            int lineCount = 0;
             for (TabbedLineReader.Line line : bigProdStream) {
                 // Get the sample ID.
                 String sampleId = line.get(sampleCol);
@@ -437,12 +465,14 @@ public class BigRunProcessor extends BaseProcessor {
                 String firstRun;
                 if (run1 >= this.runs.length) {
                     log.info("Could not find first run for sample {}: \"{}\"", sampleId, origins);
-                    firstRun = "";
+                    throw new IOException("Invalid sample " + sampleId + " has no first run.");
                 } else {
                     firstRun = this.runs[run1].getName();
                     this.runs[run1].count();
                     this.runs[run1].setMaxProdAll(production);
                 }
+                // Get the output sheet for the run.
+                var runSheet = sheetMap.get(firstRun);
                 // Compute the max production from the raw productions, skipping the questionable ones.
                 double maxProduction = 0.0;
                 for (String prodString : StringUtils.split(rawProductions, ",")) {
@@ -453,28 +483,39 @@ public class BigRunProcessor extends BaseProcessor {
                 }
                 // Get the predictions.
                 double[] preds = this.predMap.get(sample);
-                // Now we have the major derived fields.  Create the row for this sample.
-                workbook.addRow();
+                // Now we have the major derived fields.  Create the production rows for this sample.
+                // (One on the main sheet, one on the run sheet.)
+                mainSheet.addRow();
+                runSheet.addRow();
                 // Process the initial cells of this row.
                 int num = line.getInt(numCol);
-                workbook.storeCell(num);
+                mainSheet.storeCell(num);
+                runSheet.storeCell(num);
                 String oldStrain = line.get(oldStrainCol);
-                workbook.storeCell(oldStrain);
-                workbook.storeCell(sampleId);
-                workbook.storeCell(firstRun);
+                mainSheet.storeCell(oldStrain);
+                runSheet.storeCell(oldStrain);
+                mainSheet.storeCell(sampleId);
+                runSheet.storeCell(sampleId);
+                mainSheet.storeCell(firstRun);
+                runSheet.storeCell(firstRun);
                 String badFlag = line.get(badCol);
-                workbook.storeCell(badFlag);
-                workbook.storeCell(production);
-                workbook.storeCell(maxProduction);
+                mainSheet.storeCell(badFlag);
+                runSheet.storeCell(badFlag);
+                mainSheet.storeCell(production);
+                runSheet.storeCell(production);
+                mainSheet.storeCell(maxProduction);
+                runSheet.storeCell(maxProduction);
                 // Store the predictions.  Note NaN means no prediction was made.  A prediction
-                // for a first-run sample gets special treatment.
+                // for a first-run sample gets added to the first-run analyzer.
                 for (int i = 0; i < this.runs.length; i++) {
                     if (this.runs[i].hasPredictions()) {
                         double pred = preds[i];
-                        if (! Double.isFinite(pred))
-                            workbook.storeBlankCell();
-                        else {
-                            workbook.storeCell(pred);
+                        if (! Double.isFinite(pred)) {
+                            mainSheet.storeBlankCell();
+                            runSheet.storeBlankCell();
+                        } else {
+                            mainSheet.storeCell(pred);
+                            runSheet.storeCell(pred);
                             this.runs[i].addPrediction(pred, production);
                             if (i == run1)
                                 this.runs[i].addPrediction1(pred, production);
@@ -483,26 +524,46 @@ public class BigRunProcessor extends BaseProcessor {
                 }
                 // Now we store the density.  A value of NaN is output as blank.
                 double density = line.getDouble(densityCol);
-                if (! Double.isFinite(density))
-                    workbook.storeBlankCell();
-                else
-                    workbook.storeCell(density);
+                if (! Double.isFinite(density)) {
+                    mainSheet.storeBlankCell();
+                    runSheet.storeBlankCell();
+                } else {
+                    mainSheet.storeCell(density);
+                    runSheet.storeCell(density);
+                }
                 // The remaining columns are all strings.
-                workbook.storeCell(origins);
-                workbook.storeCell(rawProductions);
+                mainSheet.storeCell(origins);
+                runSheet.storeCell(origins);
+                mainSheet.storeCell(rawProductions);
+                runSheet.storeCell(rawProductions);
                 String rawDensities = line.get(rawDensCol);
-                workbook.storeCell(rawDensities);
+                mainSheet.storeCell(rawDensities);
+                runSheet.storeCell(rawDensities);
+                // Now write out the xmatrix row.
+                this.writeMatrixRow(matrixSheet, sample, density, production, maxProduction);
+                // Record our progress.
+                lineCount++;
+                if (lineCount % 1000 == 0)  log.info("{} samples processed.", lineCount);
             }
-            // Reformat the bad-flag column as a flag.
-            workbook.reformatFlagColumn(4);
-            // Fix the column widths.
-            workbook.autoSizeColumns();
-            log.info("Big production summary sheet completed.");
+            // Close up all the production sheets.
+            log.info("Finishing production sheets.");
+            for (CustomWorkbook.Sheet sheet : sheetMap.values()) {
+                // Reformat the bad-flag column as a flag.
+                sheet.reformatFlagColumn(4);
+                // Fix the column widths.
+                sheet.autoSizeColumns();
+                // Close the sheet.
+                sheet.close();
+            }
+            // Close the x-matrix sheet.
+            matrixSheet.autoSizeColumns();
+            matrixSheet.close();
+            log.info("Big production summary sheets completed.");
             for (RunDescriptor run : this.runs) {
                 if (run.hasPredictions()) {
                     // Here we have predictions to plot.  Create a sheet to hold them.
                     log.info("Creating prediction sheet for {}.", run.getName());
-                    workbook.addSheet(run.getName(), true);
+                    workbook.addSheet(run.getName() + "_pred", true);
                     List<String> headers = Arrays.asList("pred_level", "tp", "fp", "tn", "fn",
                             "sensitivity", "miss_rate", "fallout", "accuracy");
                     workbook.setHeaders(headers);
@@ -585,6 +646,14 @@ public class BigRunProcessor extends BaseProcessor {
                     // Compute the prediction success rates.
                     for (int i = 0; i < n; i++) {
                         var m = analyzer1.getMatrix(this.cutoffs.get(i));
+                        // We must compute the accuracy for the samples used to build the model.  This requires
+                        // subtracting the new samples from the predicted samples.
+                        var m0 = run.getMatrix(this.cutoffs.get(i));
+                        double old_accuracy = (m0.truePositiveCount() - m.truePositiveCount()
+                                + m0.trueNegativeCount() - m.trueNegativeCount())
+                                / (double) (run.size() - analyzer1.size());
+                        // Store the output values.
+                        workbook.storeCell(old_accuracy);
                         workbook.storeCell(m.sensitivity());
                         workbook.storeCell(m.falsePositiveCount() + m.truePositiveCount());
                     }
@@ -631,11 +700,48 @@ public class BigRunProcessor extends BaseProcessor {
     }
 
     /**
+     * Add a row for this sample to the x-matrix sheet.
+     *
+     * @param sheet				output sheet
+     * @param sample			sample identifier
+     * @param density			optical density
+     * @param production		production
+     * @param maxProduction		maximum production
+     */
+    private void writeMatrixRow(CustomWorkbook.Sheet sheet, SampleId sample, double density, double production,
+            double maxProduction) {
+        sheet.addRow();
+        sheet.storeCell(sample.toString());
+        double[] parms = this.formatter.parseSample(sample);
+        Arrays.stream(parms).forEach(x -> sheet.storeCell(x, CustomWorkbook.Num.ML));
+        if (! Double.isFinite(density))
+            sheet.storeBlankCell();
+        else
+            sheet.storeCell(density);
+        sheet.storeCell(production);
+        sheet.storeCell(maxProduction);
+    }
+
+    /**
+     * @return the headers for the x-matrix sheet.
+     */
+    private List<String> computeMatrixHeaders() {
+        String[] cols = this.formatter.getTitles();
+        var retVal = new ArrayList<String>(cols.length + 3);
+        retVal.add("sample");
+        Arrays.stream(cols).forEach(x -> retVal.add(x));
+        retVal.add("density");
+        retVal.add("mean_production");
+        retVal.add("max_production");
+        return retVal;
+    }
+
+    /**
      * @return the list of headers for the performance spreadsheet table
      */
     private List<String> computeRunHeaders() {
         final int n = this.cutoffs.size();
-        List<String> retVal = new ArrayList<String>(7 + n);
+        List<String> retVal = new ArrayList<String>(7 + 3*n);
         retVal.add("run");
         retVal.add("size");
         retVal.add("max_prod_all");
@@ -646,8 +752,10 @@ public class BigRunProcessor extends BaseProcessor {
         retVal.add("AUC");
         retVal.add("Pearson");
         for (int i = 0; i < n; i++) {
-            retVal.add(String.format("success_%2.1f", this.cutoffs.get(i)));
-            retVal.add(String.format("predicted_%2.1f", this.cutoffs.get(i)));
+            double cutoff = this.cutoffs.get(i);
+            retVal.add(String.format("validation_%2.1f", cutoff));
+            retVal.add(String.format("success_%2.1f", cutoff));
+            retVal.add(String.format("predicted_%2.1f", cutoff));
         }
         return retVal;
     }
