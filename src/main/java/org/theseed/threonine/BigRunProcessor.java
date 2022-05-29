@@ -8,6 +8,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -95,9 +96,10 @@ public class BigRunProcessor extends BaseProcessor {
     private CountMap<Double> countMapTotals;
     /** production formatter for xmatrix sheet */
     private ThrSampleFormatter formatter;
+    /** diversity map-- maps each component to a count of co-occurring components */
+    private Map<String, CountMap<String>> diversityMap;
     /** pearson correlation engine */
     private final PearsonsCorrelation computer = new PearsonsCorrelation();
-
 
     // COMMAND-LINE OPTIONS
 
@@ -402,6 +404,8 @@ public class BigRunProcessor extends BaseProcessor {
         for (Double val : this.cutoffs)
             this.countMapMap.put(val, new CountMap<String>());
         this.countMapTotals = new CountMap<Double>();
+        // Set up the diversity map.
+        this.diversityMap = new TreeMap<String, CountMap<String>>();
         // Set up the files.
         log.info("Processing control file.");
         this.processControlFile();
@@ -439,15 +443,19 @@ public class BigRunProcessor extends BaseProcessor {
                 // Get the sample ID.
                 String sampleId = line.get(sampleCol);
                 SampleId sample = new SampleId(sampleId);
-                // Update the counts.
+                var parts = sample.getComponents();
+                // Update the threshold counts.
                 double production = line.getDouble(prodCol);
                 for (Map.Entry<Double, CountMap<String>> countMap : this.countMapMap.entrySet()) {
                     final Double cutoffKey = countMap.getKey();
                     if (cutoffKey <= production) {
-                        sample.countParts(countMap.getValue());
+                        var actualMap = countMap.getValue();
+                        parts.stream().forEach(x -> actualMap.count(x));
                         this.countMapTotals.count(cutoffKey);
                     }
                 }
+                // Update the diversity counts.
+                parts.stream().forEach(x -> this.updateDiversity(parts, x));
                 // Get the origin and raw-production strings.
                 String origins = line.get(originsCol);
                 String rawProductions = line.get(rawProdCol);
@@ -660,14 +668,14 @@ public class BigRunProcessor extends BaseProcessor {
                 }
             }
             workbook.autoSizeColumns();
-            // Finally, we have the component count sheet.  We have a column for the component titles and a column
-            // for each cutoff.  Each component is a row, and the final row is for totals.
+            // Finally, we have the component count sheet.  We have a column for the component titles, a column
+            // for each cutoff, and a diversiity-count column for each component.  Each component is a row,
+            // and the final row is for totals.
             log.info("Creating component count page.");
             workbook.addSheet("components", true);
             workbook.setHeaders(this.computeCountHeaders());
             // Now we need to build the component list.  This is the union of all the key sets.
-            var components = new TreeSet<String>();
-            this.countMapMap.values().forEach(x -> components.addAll(x.keys()));
+            var components = this.diversityMap.keySet();
             // We are ready to build the component count page.  Loop through the components.  Each is a row.
             for (String component : components) {
                 workbook.addRow();
@@ -686,6 +694,14 @@ public class BigRunProcessor extends BaseProcessor {
                         }
                     }
                 }
+                var dMap = this.diversityMap.get(component);
+                for (String comp2 : components) {
+                    int coOccurrence = dMap.getCount(comp2);
+                    if (coOccurrence == 0)
+                        workbook.storeBlankCell();
+                    else
+                        workbook.storeCell(coOccurrence);
+                }
             }
             // Finally, the total row.
             workbook.addRow();
@@ -697,6 +713,20 @@ public class BigRunProcessor extends BaseProcessor {
             }
             workbook.autoSizeColumns();
         }
+    }
+
+    /**
+     * This method updates the diversity map.  It is called for each component of a sample, and its
+     * purpose is to count all of the other components that appear with the specified component.
+     *
+     * @param parts		component parts of the sample
+     * @param comp		component to count
+     */
+    private void updateDiversity(Collection<String> parts, String comp) {
+        // Get the diversity counts for this component.
+        CountMap<String> dMap = this.diversityMap.computeIfAbsent(comp, x -> new CountMap<String>());
+        // Count all the other components that appear with it.
+        parts.stream().filter(x -> ! x.contentEquals(comp)).forEach(x -> dMap.count(x));
     }
 
     /**
@@ -772,6 +802,8 @@ public class BigRunProcessor extends BaseProcessor {
             if (val > 0.0)
                 retVal.add(String.format("pct_%2.1f", val));
         }
+        for (String comp : this.diversityMap.keySet())
+            retVal.add(comp);
         return retVal;
     }
 
