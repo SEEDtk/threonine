@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +23,7 @@ import java.util.stream.IntStream;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation;
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
@@ -96,8 +99,8 @@ public class BigRunProcessor extends BaseProcessor {
     private CountMap<Double> countMapTotals;
     /** production formatter for xmatrix sheet */
     private ThrSampleFormatter formatter;
-    /** diversity map-- maps each component to a count of co-occurring components */
-    private Map<String, CountMap<String>> diversityMap;
+    /** component-pairing map-- maps each component to a hash of components to statistical summaries of pairings */
+    private Map<String, Map<String, DescriptiveStatistics>> pairMap;
     /** pearson correlation engine */
     private final PearsonsCorrelation computer = new PearsonsCorrelation();
 
@@ -370,6 +373,39 @@ public class BigRunProcessor extends BaseProcessor {
 
     }
 
+    /**
+     * This class is used to sort the components so that they make a more readable surface plot.
+     */
+    protected class ComponentSorter implements Comparator<String> {
+
+        /** hash of component IDs to mean of the maximum */
+        private Map<String, Double> ratingMap;
+
+        /**
+         * Create the map that we will use to sort the components.
+         */
+        protected ComponentSorter() {
+            this.ratingMap = new HashMap<String, Double>(BigRunProcessor.this.pairMap.keySet().size() * 4 / 3 + 1);
+            for (Map.Entry<String, Map<String, DescriptiveStatistics>> pairEntry : BigRunProcessor.this.pairMap.entrySet()) {
+                var comp = pairEntry.getKey();
+                var dMap = pairEntry.getValue();
+                // Get the mean of each pair value for the source component.
+                double value = dMap.values().stream().mapToDouble(x -> BigRunProcessor.this.getValue(x))
+                        .filter(x -> x > 0).average().orElse(0.0);
+                this.ratingMap.put(comp, value);
+            }
+        }
+
+        @Override
+        public int compare(String o1, String o2) {
+            return Double.compare(this.ratingMap.getOrDefault(o1, 0.0), this.ratingMap.getOrDefault(o2, 0.0));
+        }
+
+
+    }
+
+    // METHODS
+
     @Override
     protected void setDefaults() {
         this.scoreList = "1.2,2.0,4.0";
@@ -404,8 +440,8 @@ public class BigRunProcessor extends BaseProcessor {
         for (Double val : this.cutoffs)
             this.countMapMap.put(val, new CountMap<String>());
         this.countMapTotals = new CountMap<Double>();
-        // Set up the diversity map.
-        this.diversityMap = new TreeMap<String, CountMap<String>>();
+        // Set up the pairing map.
+        this.pairMap = new TreeMap<String, Map<String, DescriptiveStatistics>>();
         // Set up the files.
         log.info("Processing control file.");
         this.processControlFile();
@@ -455,7 +491,7 @@ public class BigRunProcessor extends BaseProcessor {
                     }
                 }
                 // Update the diversity counts.
-                parts.stream().forEach(x -> this.updateDiversity(parts, x));
+                parts.stream().forEach(x -> this.updateDiversity(parts, x, production));
                 // Get the origin and raw-production strings.
                 String origins = line.get(originsCol);
                 String rawProductions = line.get(rawProdCol);
@@ -668,14 +704,14 @@ public class BigRunProcessor extends BaseProcessor {
                 }
             }
             workbook.autoSizeColumns();
-            // Finally, we have the component count sheet.  We have a column for the component titles, a column
+            // Next, we have the component count sheet.  We have a column for the component titles, a column
             // for each cutoff, and a diversiity-count column for each component.  Each component is a row,
             // and the final row is for totals.
             log.info("Creating component count page.");
             workbook.addSheet("components", true);
             workbook.setHeaders(this.computeCountHeaders());
             // Now we need to build the component list.  This is the union of all the key sets.
-            var components = this.diversityMap.keySet();
+            var components = this.pairMap.keySet();
             // We are ready to build the component count page.  Loop through the components.  Each is a row.
             for (String component : components) {
                 workbook.addRow();
@@ -694,13 +730,13 @@ public class BigRunProcessor extends BaseProcessor {
                         }
                     }
                 }
-                var dMap = this.diversityMap.get(component);
+                var dMap = this.pairMap.get(component);
                 for (String comp2 : components) {
-                    int coOccurrence = dMap.getCount(comp2);
-                    if (coOccurrence == 0)
+                    DescriptiveStatistics pairStats = dMap.get(comp2);
+                    if (pairStats == null || pairStats.getN() == 0)
                         workbook.storeBlankCell();
                     else
-                        workbook.storeCell(coOccurrence);
+                        workbook.storeCell((int) pairStats.getN());
                 }
             }
             // Finally, the total row.
@@ -712,7 +748,40 @@ public class BigRunProcessor extends BaseProcessor {
                     workbook.storeBlankCell();
             }
             workbook.autoSizeColumns();
+            // This next sheet contains a summary value for each component combination.  The result can be
+            // used for a heat map or surface plot.  Currently, the summary value is the maximum.
+            log.info("Creating component-pairing page.");
+            List<String> sortedComponents = new ArrayList<String>(components);
+            Collections.sort(sortedComponents, this.new ComponentSorter());
+            workbook.addSheet("comp_pairs", true);
+            headers = new ArrayList<String>(sortedComponents.size() + 1);
+            headers.add("component");
+            headers.addAll(sortedComponents);
+            workbook.setHeaders(headers);
+            // Now we create one row per component.
+            for (String comp : sortedComponents) {
+                var dMap = this.pairMap.get(comp);
+                workbook.addRow();
+                workbook.storeCell(comp);
+                for (String comp2 : sortedComponents) {
+                    DescriptiveStatistics stats = dMap.get(comp2);
+                    if (stats == null)
+                        workbook.storeBlankCell();
+                    else
+                        workbook.storeCell(getValue(stats));
+                }
+            }
+            workbook.autoSizeColumns();
         }
+    }
+
+    /**
+     * @return the useful value from the diversity statistics object
+     *
+     * @param stats		diversity statistics object for one component pair
+     */
+    protected double getValue(DescriptiveStatistics stats) {
+        return stats.getMax();
     }
 
     /**
@@ -721,12 +790,26 @@ public class BigRunProcessor extends BaseProcessor {
      *
      * @param parts		component parts of the sample
      * @param comp		component to count
+     * @param prod		production value of the sample
      */
-    private void updateDiversity(Collection<String> parts, String comp) {
+    private void updateDiversity(Collection<String> parts, String comp, double prod) {
         // Get the diversity counts for this component.
-        CountMap<String> dMap = this.diversityMap.computeIfAbsent(comp, x -> new CountMap<String>());
+        Map<String, DescriptiveStatistics> dMap = this.pairMap.computeIfAbsent(comp, x -> new HashMap<String, DescriptiveStatistics>());
         // Count all the other components that appear with it.
-        parts.stream().filter(x -> ! x.contentEquals(comp)).forEach(x -> dMap.count(x));
+        parts.stream().filter(x -> ! x.contentEquals(comp)).forEach(x -> this.recordPair(dMap, x, prod));
+    }
+
+    /**
+     * Record a pair instance in a pairing sub-map.  The submap represents a primary component and contains a
+     * DescriptiveStatistics object for each other possible paired component.
+     *
+     * @param dMap		pairing sub-map for the primary component
+     * @param comp		secondary component
+     * @param prod		production output value
+     */
+    private void recordPair(Map<String, DescriptiveStatistics> dMap, String comp, double prod) {
+        var stats = dMap.computeIfAbsent(comp, x -> new DescriptiveStatistics());
+        stats.addValue(prod);
     }
 
     /**
@@ -802,7 +885,7 @@ public class BigRunProcessor extends BaseProcessor {
             if (val > 0.0)
                 retVal.add(String.format("pct_%2.1f", val));
         }
-        for (String comp : this.diversityMap.keySet())
+        for (String comp : this.pairMap.keySet())
             retVal.add(comp);
         return retVal;
     }
