@@ -27,6 +27,7 @@ import org.theseed.utils.BaseProcessor;
  * layout		convert a layout file to a CSV showing all the wells
  * analyze		analyze predictions vs. production for a particular run
  * bigRuns		add run-based predictions to the big production table
+ * restrain		fix strain names in the combined master file
  *
  */
 public class App
@@ -104,6 +105,9 @@ public class App
             break;
         case "bigRuns" :
             processor = new BigRunProcessor();
+            break;
+        case "restrain" :
+            processor = new ReStrainProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
