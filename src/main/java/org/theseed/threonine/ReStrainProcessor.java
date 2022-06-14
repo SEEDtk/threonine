@@ -60,6 +60,8 @@ public class ReStrainProcessor extends BasePipeProcessor {
     private int fixedCol;
     /** suspect-flag column index */
     private int suspectCol;
+    /** iptg-flag column index */
+    private int iptgCol;
 
     // COMMAND-LINE OPTIONS
 
@@ -78,6 +80,7 @@ public class ReStrainProcessor extends BasePipeProcessor {
         this.thrCol = inputStream.findField("Thr");
         this.fixedCol = inputStream.findField("fixed");
         this.suspectCol = inputStream.findField("Suspect");
+        this.iptgCol = inputStream.findField("iptg");
     }
 
     @Override
@@ -133,6 +136,11 @@ public class ReStrainProcessor extends BasePipeProcessor {
                         cols[i] = oldCols[i];
                     oldCols[i] = cols[i];
                 }
+                // Convert the IPTG column.
+                if (cols[iptgCol].equals("I"))
+                    cols[iptgCol] = "TRUE";
+                else if (cols[iptgCol].equals("0"))
+                    cols[iptgCol] = "FALSE";
                 // If this sample is already fixed, write it unchanged.
                 if (line.getFlag(this.fixedCol)) {
                     preFixCount++;

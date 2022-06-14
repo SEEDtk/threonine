@@ -40,6 +40,8 @@ public class GrowthData implements Comparable<GrowthData> {
     private double timePoint;
     /** TRUE if this sample is suspicious */
     private boolean suspicious;
+    /** number of fixes applied to tests of this sample */
+    private int fixCount;
     /** algorithm for computing the mean */
     public static MeanComputer MEAN_COMPUTER = new MeanComputer.Sigma(2);
     /** minimum acceptable density */
@@ -61,6 +63,7 @@ public class GrowthData implements Comparable<GrowthData> {
         this.goodLevels = new BitSet();
         this.timePoint = time;
         this.suspicious = false;
+        this.fixCount = 0;
         this.productionKey = Double.NaN;
         this.prediction = Double.NaN;
     }
@@ -361,6 +364,27 @@ public class GrowthData implements Comparable<GrowthData> {
      */
     public void setPrediction(double prediction) {
         this.prediction = prediction;
+    }
+
+    /**
+     * @return the number of fixes for this sample
+     */
+    public int getFixCount() {
+        return this.fixCount;
+    }
+
+    /**
+     * Increment the fix count.
+     */
+    public void countFix() {
+        this.fixCount++;
+    }
+
+    /**
+     * @return the number of experiments for this sample
+     */
+    public int size() {
+        return this.origins.size();
     }
 
 }

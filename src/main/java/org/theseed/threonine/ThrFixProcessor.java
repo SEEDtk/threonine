@@ -17,6 +17,8 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Argument;
@@ -27,6 +29,7 @@ import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.MeanComputer;
 import org.theseed.samples.SampleId;
 import org.theseed.utils.BaseProcessor;
+import org.theseed.utils.ParseFailureException;
 
 /**
  * This is a special-purpose script to reconcile the threonine growth and production data in the master file.
@@ -57,6 +60,12 @@ import org.theseed.utils.BaseProcessor;
  * --iptg		if specified, only IPTG-positive samples will be output
  * --predict	name of a file containing predicted production values for the samples; the file should be tab-delimited,
  * 				with headers, the sample ID in column 1 and the prediction in column 2
+ * --runFile	name of the run control file; if specified, the run control file must have at least two columns,
+ * 				tab-delimited with headers, with the run name in the first column and the plate/well pattern in the
+ * 				second; the runs must be in order; in the absence of this file, every experiment is assigned the run
+ * 				"ALL"
+ * --runs		if specified, the names of the runs to include, comma-delimited; the default is to include all runs
+ * --fixed		exclude unfixed samples
  *
  * @author Bruce Parrello
  *
@@ -72,6 +81,10 @@ public class ThrFixProcessor extends BaseProcessor {
     private SortedMap<SampleId, GrowthData> badGrowthMap;
     /** strain fragment sets */
     private List<Set<String>> choices;
+    /** map of run names to plate/well patterns */
+    private Map<String, Pattern> runMap;
+    /** set of runs to include */
+    private Set<String> runs;
 
     // COMMAND-LINE OPTIONS
 
@@ -103,6 +116,18 @@ public class ThrFixProcessor extends BaseProcessor {
     @Option(name = "--predict", metaVar = "thrall.predictions.tbl", usage = "if specified, a tab-delimited 2-column file containing predicted production levels")
     private File predictFile;
 
+    /** run file name */
+    @Option(name = "--runFile", metaVar = "runs.control.tbl", usage = "if specified, the run identification control file")
+    private File runFile;
+
+    /** name of last acceptable run */
+    @Option(name = "--runs", metaVar = "21Jan,21Aug", usage = "if specified, a comma-delimited list of runs to include")
+    private String runList;
+
+    /** TRUE if only fixed samples should be included */
+    @Option(name = "--fixFilter", usage = "if specified, only fixed samples will be included")
+    private boolean fixFilter;
+
     /** old strain data file */
     @Argument(index = 0, metaVar = "oldStrains.tbl", usage = "old strain information file", required = true)
     private File oldFile;
@@ -124,10 +149,13 @@ public class ThrFixProcessor extends BaseProcessor {
         this.timeFilter = -1.0;
         this.iptgFilter = false;
         this.predictFile = null;
+        this.runFile = null;
+        this.runList = null;
+        this.fixFilter = false;
     }
 
      @Override
-    protected boolean validateParms() throws IOException {
+    protected boolean validateParms() throws ParseFailureException, IOException {
         // Verify the input files.
         if (! this.oldFile.canRead())
             throw new FileNotFoundException("Old strain input file " + this.oldFile + " is not found or unreadable.");
@@ -137,6 +165,34 @@ public class ThrFixProcessor extends BaseProcessor {
         // Validate the prediction file.
         if (this.predictFile != null && ! this.predictFile.canRead())
             throw new FileNotFoundException("Prediction file " + this.predictFile + " is not found or unreadable.");
+        // Set up the runs.
+        if (this.runFile == null) {
+            // No run filtering used.
+            log.info("No run control file, so run-filtering suppressed.");
+            this.runMap = Map.of("ALL", Pattern.compile(".+"));
+            this.runs = Set.of("ALL");
+        } else if (! this.runFile.canRead())
+            throw new FileNotFoundException("Run control file " + this.runFile + " is not found or unreadable.");
+        else {
+            // Here we have a run control file.  Loop through it, saving the names and patterns.
+            log.info("Run specifications will be read from {}.", this.runFile);
+            try (TabbedLineReader runStream = new TabbedLineReader(this.runFile)) {
+                this.runMap = runStream.stream().collect(Collectors.toMap(x -> x.get(0), x -> Pattern.compile(x.get(1))));
+            }
+            log.info("{} runs read from control file.", this.runMap.size());
+            if (this.runList == null) {
+                this.runs = this.runMap.keySet();
+                log.info("All runs will be allowed.");
+            } else {
+                this.runs = Set.of(StringUtils.split(this.runList, ','));
+                // Validate the runs selected.
+                for (String run : this.runs) {
+                    if (! this.runMap.containsKey(run))
+                        throw new ParseFailureException("Run " + run + " not found in run list.");
+                }
+                log.info("{} runs will be included in output.", this.runs.size());
+            }
+        }
         return true;
     }
 
@@ -157,13 +213,14 @@ public class ThrFixProcessor extends BaseProcessor {
         boolean iptgFlag = false;
         // If the strain field is blank er also use the saved value.
         String oldStrain = "";
-        // Here we'll count rows we skipped due to missing numbers or untranslatable strains.
+        // Here we'll count rows we skipped due to missing numbers, untranslatable strains, or filtering.
         int badNumRows = 0;
         int badSampleRows = 0;
         int badStrainRows = 0;
         int keptRows = 0;
         int zeroProdRows = 0;
         int filterRows = 0;
+        int excludedRows = 0;
         // Now loop through the file.
         try (TabbedLineReader oldStream = new TabbedLineReader(this.oldFile)) {
             int strainCol = oldStream.findField("strain_lower");
@@ -174,6 +231,10 @@ public class ThrFixProcessor extends BaseProcessor {
             int errCol = oldStream.findField("Suspect");
             int expCol = oldStream.findField("experiment");
             int wellCol = oldStream.findField("Sample_y");
+            // Check for the fix column.
+            int fixedCol = oldStream.findColumn("Fixed");
+            if (fixedCol < 0)
+                log.warn("WARNING:  No fixup flag column.");
             for (TabbedLineReader.Line line : oldStream) {
                 // Verify that this line has numbers in the growth and production columns.
                 if (line.isEmpty(prodCol) || line.isEmpty(densCol))
@@ -198,6 +259,10 @@ public class ThrFixProcessor extends BaseProcessor {
                             time = Double.NaN;
                         else
                             time = line.getDouble(timeCol);
+                        // Get the experiment and well.
+                        String exp = line.get(expCol);
+                        String well = line.get(wellCol);
+                        boolean fixFlag = (fixedCol >= 0 && line.getFlag(fixedCol));
                         // If the time is 4.5, IPTG is always FALSE.  It is not added until 5 hours.
                         boolean realIptg = iptgFlag && (time >= 5.0);
                         // Convert the strain to a sample ID.
@@ -208,9 +273,13 @@ public class ThrFixProcessor extends BaseProcessor {
                                 log.debug("Invalid input strain ID {}.", strain);
                                 badStrainNames.add(strain);
                             }
-                        } else if (this.iptgFilter && ! sample.isIPTG() || this.timeFilter >= 0.0 && sample.getTimePoint() != this.timeFilter) {
+                        } else if (this.iptgFilter && ! sample.isIPTG() || this.timeFilter >= 0.0 && sample.getTimePoint() != this.timeFilter
+                                || this.fixFilter && ! fixFlag) {
                             // Here the sample is rejected by the filtering criteria.
                             filterRows++;
+                        } else if (! this.acceptableRun(exp, well)) {
+                            // Here the sample is from an excluded run.
+                            excludedRows++;
                         } else {
                             // Update the choices.
                             String[] strainData = sample.getBaseFragments();
@@ -235,7 +304,10 @@ public class ThrFixProcessor extends BaseProcessor {
                             }
                             // Store this row in the sample map.
                             GrowthData growth = targetMap.computeIfAbsent(sample, x -> new GrowthData(strain, time));
-                            growth.merge(prod, dens, line.get(expCol), line.get(wellCol));
+                            growth.merge(prod, dens, exp, well);
+                            // Update the fix count.
+                            if (fixFlag)
+                                growth.countFix();
                         }
                     }
                 }
@@ -274,7 +346,7 @@ public class ThrFixProcessor extends BaseProcessor {
         log.info("{} rows had improperly-formatted strain names.  {} rows were removed by filtering", badStrainRows, filterRows);
         log.info("{} rows were missing growth or production numbers, {} input rows were suspect, and {} were good.",
                 badNumRows, badSampleRows, keptRows);
-        log.info("{} good rows had no production.", zeroProdRows);
+        log.info("{} good rows had no production. {} were excluded due to run filtering,", zeroProdRows, excludedRows);
         // Analyze the good data.
         int qCount = 0;
         int aCount = 0;
@@ -297,7 +369,7 @@ public class ThrFixProcessor extends BaseProcessor {
         // Write the results.
         log.info("Producing output to {}.", this.outFile);
         try (PrintWriter writer = new PrintWriter(this.outFile)) {
-            writer.println("num\told_strain\tsample\tthr_production\tprediction\tdensity\tbad\tthr_normalized\tthr_rate\torigins\traw_productions\traw_densities");
+            writer.println("num\told_strain\tsample\tthr_production\tprediction\tdensity\tbad\tfixes\tunfixed\tthr_normalized\tthr_rate\torigins\traw_productions\traw_densities");
             int num = 0;
             for (Map.Entry<SampleId, GrowthData> sampleEntry : this.growthMap.entrySet()) {
                 SampleId sampleId = sampleEntry.getKey();
@@ -321,6 +393,26 @@ public class ThrFixProcessor extends BaseProcessor {
                 log.info("{} bad samples output.", num - oldNum);
             }
         }
+    }
+
+    /**
+     * @return TRUE if this sample test is from an acceptable run, else FALSE
+     *
+     * @param exp		plate ID
+     * @param well		well ID
+     *
+     * @throws IOException
+     */
+    private boolean acceptableRun(String exp, String well) throws IOException {
+        String testId = exp + ":" + well;
+        String retVal = null;
+        for (Map.Entry<String, Pattern> runEntry : this.runMap.entrySet()) {
+            if (runEntry.getValue().matcher(testId).matches())
+                retVal = runEntry.getKey();
+        }
+        if (retVal == null)
+            throw new IOException("Invalid experiment \"" + testId + "\" found:  cannot identify run.");
+        else return this.runs.contains(retVal);
     }
 
     /**
@@ -361,10 +453,17 @@ public class ThrFixProcessor extends BaseProcessor {
      * @param badFlag	"Y" if bad, "" if good, "?" if questionable
      */
     private void writeSampleData(PrintWriter writer, int num, SampleId sampleId, GrowthData growth, String badFlag) {
-        writer.format("%d\t%s\t%s\t%1.9f\t%s\t%s\t%s\t%1.9f\t%1.9f\t%s\t%s\t%s%n",
+        int fixed = growth.getFixCount();
+        int unfixed = growth.size() - growth.getFixCount();
+        String fixString;
+        if (fixed == 0)
+            fixString = "\t";
+        else
+            fixString = String.format("%d\t%d", fixed, unfixed);
+        writer.format("%d\t%s\t%s\t%1.9f\t%s\t%s\t%s\t%s\t%1.9f\t%1.9f\t%s\t%s\t%s%n",
                 num, growth.getOldStrain(), sampleId.toString(), growth.getProduction(),
                 format(growth.getPrediction(), "%1.4f"), format(growth.getDensity(), "%1.2f"),
-                badFlag, growth.getNormalizedProduction(), growth.getProductionRate(),
+                badFlag, fixString, growth.getNormalizedProduction(), growth.getProductionRate(),
                 growth.getOrigins(), growth.getProductionList(), growth.getGrowthList());
     }
 
