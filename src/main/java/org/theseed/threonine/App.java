@@ -28,6 +28,8 @@ import org.theseed.utils.BaseProcessor;
  * analyze		analyze predictions vs. production for a particular run
  * bigRuns		add run-based predictions to the big production table
  * restrain		fix strain names in the combined master file
+ * pairs		produce a report on pair performance from the big production table
+ * strains		produce a strain report from a big_run_master file
  *
  */
 public class App
@@ -108,6 +110,12 @@ public class App
             break;
         case "restrain" :
             processor = new ReStrainProcessor();
+            break;
+        case "pairs" :
+            processor = new PairProcessor();
+            break;
+        case "strains" :
+            processor = new StrainProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);

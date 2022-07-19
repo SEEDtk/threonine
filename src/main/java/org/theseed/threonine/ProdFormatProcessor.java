@@ -31,7 +31,6 @@ import org.theseed.utils.ParseFailureException;
  *
  * 	sample			sample ID
  * 	thr_production	threonine production
- * 	growth			optical density
  *  bad				"Y" for a row with bad data, "?" for a row with questionable data, else empty
  *
  * There is also a required "choices.tbl" file that describes the labels for each of the fields in the strain name.
@@ -55,6 +54,8 @@ import org.theseed.utils.ParseFailureException;
  * --meta		list of meta-data column labels to use (multiple may be specified)
  * --label		label to use for the production column; the default is "production"
  * --limited	comma-delimited list of strains IDs to include (default is include all)
+ * --run		if specified, the a comma-delimited list of run names to include; run names are in the column "first_run"
+ * 				(default is to not check for runs)
  *
  * @author Bruce Parrello
  *
@@ -68,6 +69,8 @@ public class ProdFormatProcessor extends BaseProcessor {
     private InputStream reader;
     /** include set */
     private Set<String> strainsToKeep;
+    /** run set */
+    private Set<String> runsToKeep;
 
     // COMMAND-LINE OPTIONS
 
@@ -110,7 +113,7 @@ public class ProdFormatProcessor extends BaseProcessor {
     /** label to give to column containing production value */
     @Option(name = "--label", metaVar = "thr_prod", usage = "label to put on production output column")
     private String prodLabel;
-    
+
     /** list of additional meta-data columns to output */
     @Option(name = "--meta", metaVar = "growth", usage = "list of meta-data columns to specify")
     private List<String> metaCols;
@@ -118,6 +121,10 @@ public class ProdFormatProcessor extends BaseProcessor {
     /** if specified, output will be limited to the specified strains */
     @Option(name = "--limited", usage = "comma-delimited list of strain IDs to include (default includes all)")
     private String limitStrains;
+
+    /** if specified, comma-delimited list of runs to keep */
+    @Option(name = "--run", metaVar = "run1,run2,...", usage = "comma-delimited list of runs to include (default includes all)")
+    private String runList;
 
     /** output file */
     @Argument(index = 0, metaVar = "outFile.csv", usage = "output file")
@@ -137,6 +144,7 @@ public class ProdFormatProcessor extends BaseProcessor {
         this.metaCols = new ArrayList<String>();
         this.limitStrains = null;
         this.prodLabel = "production";
+        this.runList = null;
     }
 
     @Override
@@ -163,6 +171,12 @@ public class ProdFormatProcessor extends BaseProcessor {
             this.strainsToKeep = Arrays.stream(StringUtils.split(this.limitStrains, ',')).collect(Collectors.toSet());
             log.info("Strains will be limited to: {}.", StringUtils.join(this.strainsToKeep, ", "));
         }
+        // Process the runs to keep.
+        this.runsToKeep = null;
+        if (this.runList != null) {
+            this.runsToKeep = Arrays.stream(StringUtils.split(this.runList, ',')).collect(Collectors.toSet());
+            log.info("Runs will be limited to: {}.", StringUtils.join(this.runsToKeep, ". "));
+        }
         return true;
     }
 
@@ -176,8 +190,11 @@ public class ProdFormatProcessor extends BaseProcessor {
             int prodCol = reader.findField(this.prodName);
             int[] metaColNums = new int[this.metaCols.size()];
             for (int i = 0; i < metaColNums.length; i++)
-            	metaColNums[i] = reader.findField(this.metaCols.get(i));
+                metaColNums[i] = reader.findField(this.metaCols.get(i));
             int badCol = reader.findField("bad");
+            int runCol = -1;
+            if (this.runsToKeep != null)
+                runCol = reader.findField("first_run");
             // Set the production column label.
             writer.setProdName(this.prodLabel);
             // Start the report.
@@ -196,6 +213,8 @@ public class ProdFormatProcessor extends BaseProcessor {
                     badCount++;
                 else if (this.pureFlag && badFlag.equals("?"))
                     skipCount++;
+                else if (runCol >= 0 && ! this.runsToKeep.contains(line.get(runCol)))
+                    excludeCount++;
                 else {
                     String sampleId = line.get(sampleCol);
                     SampleId sample = new SampleId(sampleId);

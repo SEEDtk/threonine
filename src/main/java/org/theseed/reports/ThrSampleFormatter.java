@@ -510,11 +510,13 @@ public class ThrSampleFormatter {
                 case "T":
                     if (! this.computeFragment(1).contentEquals("0")) retVal = false;
                     if (! this.computeFragment(3).contentEquals("C")) retVal = false;
+                    if (this.computeFragment(4).contentEquals("asdD")) retVal = false;
                     break;
                 case "0":
                     if (! this.computeFragment(1).contentEquals("0")) retVal = false;
                     if (! this.computeFragment(3).contentEquals("0") &&
                             ! this.computeFragment(3).contentEquals("A")) retVal = false;
+                    if (this.computeFragment(4).contentEquals("asdD")) retVal = false;
                     break;
                 default : /* TasdX */
                     if (! this.computeFragment(1).contentEquals("D")) retVal = false;
