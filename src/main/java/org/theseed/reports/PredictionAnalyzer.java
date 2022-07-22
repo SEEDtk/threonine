@@ -245,6 +245,15 @@ public class PredictionAnalyzer {
     }
 
     /**
+     * Construct a new prediction analyzer from a list of pairs.
+     *
+     * @param pairs		collection of prediction/production pairs to use
+     */
+    public PredictionAnalyzer(Collection<PredProd> pairs) {
+        this.samples = new ArrayList<PredProd>(pairs);
+    }
+
+    /**
      * Add a prediction to this analyzer.
      *
      * @param prediction	predicted value

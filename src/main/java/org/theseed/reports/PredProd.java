@@ -83,4 +83,22 @@ public class PredProd implements Comparable<PredProd> {
         return Math.abs(this.prediction - this.production);
     }
 
+    /**
+     * Store a new prediction value.
+     *
+     * @param pred	proposed new prediction
+     */
+    public void setPrediction(double pred) {
+        this.prediction = pred;
+    }
+
+    /**
+     * Store a new production value.
+     *
+     * @param prod	proposed new production value
+     */
+    public void setProduction(double prod) {
+        this.production = prod;
+    }
+
 }

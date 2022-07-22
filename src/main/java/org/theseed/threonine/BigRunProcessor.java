@@ -33,6 +33,7 @@ import org.theseed.excel.CustomWorkbook;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.PredProd;
 import org.theseed.reports.PredictionAnalyzer;
+import org.theseed.reports.StrainAnalyzer;
 import org.theseed.reports.ThrSampleFormatter;
 import org.theseed.samples.SampleId;
 import org.theseed.utils.BaseProcessor;
@@ -143,6 +144,8 @@ public class BigRunProcessor extends BaseProcessor {
         private File predFile;
         /** prediction analyzer */
         private PredictionAnalyzer analyzer;
+        /** strain analyzer */
+        private StrainAnalyzer strainData;
         /** first-run prediction analyzer */
         private PredictionAnalyzer analyzer1;
         /** area under the curve */
@@ -169,6 +172,7 @@ public class BigRunProcessor extends BaseProcessor {
                 this.predFile = new File(predFileName);
             this.analyzer = new PredictionAnalyzer();
             this.analyzer1 = new PredictionAnalyzer();
+            this.strainData = new StrainAnalyzer();
             this.runSize = 0;
             this.maxProdAll = 0;
         }
@@ -230,11 +234,13 @@ public class BigRunProcessor extends BaseProcessor {
         /**
          * Add a prediction/production pair to this run's analysis.
          *
+         * @param sample		ID of sample
          * @param pred			predicted value for this run
          * @param production	actual value of sample
          */
-        public void addPrediction(double pred, double production) {
+        public void addPrediction(SampleId sample, double pred, double production) {
             this.analyzer.add(pred, production);
+            this.strainData.add(sample, pred, production);
         }
 
         /**
@@ -252,6 +258,13 @@ public class BigRunProcessor extends BaseProcessor {
          */
         public double[] getAllPredictions() {
             return this.analyzer.getAllPredictions();
+        }
+
+        /**
+         * @return the strain predictions for this run
+         */
+        public PredictionAnalyzer getStrainData() {
+            return this.strainData.toAnalyzer();
         }
 
         /**
@@ -560,7 +573,7 @@ public class BigRunProcessor extends BaseProcessor {
                         } else {
                             mainSheet.storeCell(pred);
                             runSheet.storeCell(pred);
-                            this.runs[i].addPrediction(pred, production);
+                            this.runs[i].addPrediction(sample, pred, production);
                             if (i == run1)
                                 this.runs[i].addPrediction1(pred, production);
                         }
@@ -698,14 +711,15 @@ public class BigRunProcessor extends BaseProcessor {
                                 / (double) (run.size() - analyzer1.size());
                         // Store the output values.
                         workbook.storeCell(old_accuracy);
-                        workbook.storeCell(m.sensitivity());
+                        workbook.storeCell(m.truePositiveCount() / (m.truePositiveCount() + m.falsePositiveCount()));
                         workbook.storeCell(m.falsePositiveCount() + m.truePositiveCount());
+                        workbook.storeCell(m.truePositiveCount());
                     }
                 }
             }
             workbook.autoSizeColumns();
             // Next, we have the component count sheet.  We have a column for the component titles, a column
-            // for each cutoff, and a diversiity-count column for each component.  Each component is a row,
+            // for each cutoff, and a diversity-count column for each component.  Each component is a row,
             // and the final row is for totals.
             log.info("Creating component count page.");
             workbook.addSheet("components", true);
@@ -869,6 +883,7 @@ public class BigRunProcessor extends BaseProcessor {
             retVal.add(String.format("validation_%2.1f", cutoff));
             retVal.add(String.format("success_%2.1f", cutoff));
             retVal.add(String.format("predicted_%2.1f", cutoff));
+            retVal.add(String.format("truePos_%2.1f", cutoff));
         }
         return retVal;
     }
