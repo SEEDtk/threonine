@@ -165,6 +165,27 @@ public class PredictionAnalyzer {
             return this.cutoff;
         }
 
+        /**
+         * @return the precision (true positive / predicted positive)
+         */
+        public double precision() {
+            return this.safeRatio(confusion[1][1], confusion[1][1] + confusion[1][0]);
+        }
+
+        /**
+         * @return the number predicted positive
+         */
+        public int predictedCount() {
+            return this.falsePositiveCount() + this.truePositiveCount();
+        }
+
+        /**
+         * @return the number producing positive
+         */
+        public int actualCount() {
+            return this.truePositiveCount() + this.falseNegativeCount();
+        }
+
     }
 
     /**

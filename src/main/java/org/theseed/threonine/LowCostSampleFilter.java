@@ -32,7 +32,7 @@ public class LowCostSampleFilter extends SampleFilter {
     @Override
     public boolean acceptable(SampleId sample) {
         boolean retVal = true;
-        if (! this.plasmidFlag &&  sample.getFragment(3).contentEquals("P"))
+        if (! this.plasmidFlag && sample.getFragment(3).contentEquals("P"))
             retVal = false;
         else if (sample.getDeletes().size() > this.maxDeletes)
             retVal = false;

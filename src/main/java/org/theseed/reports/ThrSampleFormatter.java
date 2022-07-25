@@ -39,10 +39,6 @@ public class ThrSampleFormatter {
     private String[] deleteChoices;
     /** permissible insert values */
     private String[] insertChoices;
-    /** current set of inserts */
-    private Set<String> insertSet;
-    /** current set of deletes */
-    private Set<String> deleteSet;
     /** number of output columns for the sample description */
     private int numCols;
     /** choices for IPTG flag */
@@ -77,8 +73,6 @@ public class ThrSampleFormatter {
         int n = SampleId.numBaseFragments();
         this.choices = new ArrayList<String[]>(n+2);
         this.iChoices = new ArrayList<String[]>(n+2);
-        this.insertSet = new TreeSet<String>();
-        this.deleteSet = new TreeSet<String>();
         // This will hold the number of output columns required for a sample ID.  We start with 2, for the
         // time and the IPTG flag.
         this.numCols = 2;
@@ -117,23 +111,31 @@ public class ThrSampleFormatter {
      */
     public String insertSubset(int mask) {
         String retVal;
-        this.insertSet.clear();
-        // For an empty set, use 000.
-        if (mask == 0)
+        Set<String> insertSet = this.calculateInserts(mask);
+        if (insertSet.isEmpty())
             retVal = "000";
-        else {
-            // Here we have inserts to string together.
-            int i = 0;
-            while (mask > 0) {
-                if ((mask & 1) == 1)
-                    this.insertSet.add(this.insertChoices[i]);
-                i++;
-                mask >>= 1;
-            }
-            retVal = StringUtils.join(this.insertSet, "-");
-        }
+        else
+            retVal = StringUtils.join(insertSet, "-");
         return retVal;
     }
+
+    /**
+     * @return the set of inserts for the current sample
+     *
+     * @param mask	insertion mask
+     */
+    protected Set<String> calculateInserts(int mask) {
+        Set<String> insertSet = new TreeSet<String>();
+        int i = 0;
+        while (mask > 0) {
+            if ((mask & 1) == 1)
+                insertSet.add(this.insertChoices[i]);
+            i++;
+            mask >>= 1;
+        }
+        return insertSet;
+    }
+
     /**
      * @return a delete string based on the subset of the deletes indicated by the specified integer
      *
@@ -141,24 +143,27 @@ public class ThrSampleFormatter {
      */
     public String deleteSubset(int mask) {
         String retVal;
-        this.deleteSet.clear();
-        // For an empty set, use D000.
-        if (mask == 0)
+        Set<String> deleteSet = this.calculateDeletes(mask);
+        if (deleteSet.isEmpty())
             retVal = "D000";
-        else {
-            // Here we have deletes to string together.
-            StringBuilder buffer = new StringBuilder(this.deleteChoices.length * 4);
-            // Loop through the mask, processing bits.
-            int i = 0;
-            while (mask > 0) {
-                if ((mask & 1) == 1) {
-                    buffer.append('D').append(this.deleteChoices[i]);
-                    this.deleteSet.add(this.deleteChoices[i]);
-                }
-                i++;
-                mask >>= 1;
-            }
-            retVal = buffer.toString();
+        else
+            retVal = "D" + StringUtils.join(deleteSet, "D");
+        return retVal;
+    }
+
+    /**
+     * @return the set of deletes for the current sample
+     *
+     * @param mask	an integer indicating which delete choices to include in the set
+     */
+    protected Set<String> calculateDeletes(int mask) {
+        Set<String> retVal = new TreeSet<String>();
+        int i = 0;
+        while (mask > 0) {
+            if ((mask & 1) == 1)
+                retVal.add(this.deleteChoices[i]);
+            i++;
+            mask >>= 1;
         }
         return retVal;
     }
@@ -373,6 +378,10 @@ public class ThrSampleFormatter {
         private int[] limits;
         /** TRUE if we are at the end */
         private boolean done;
+        /** position for insert mask */
+        private int insertPos;
+        /** position for delete mask */
+        private int deletePos;
 
         /**
          * Construct an iterator through the sample IDs.
@@ -390,9 +399,11 @@ public class ThrSampleFormatter {
             }
             // Here we have the number of possible insertion subsets.
             this.limits[i] = 1 << ThrSampleFormatter.this.insertChoices.length;
+            this.insertPos = i;
             i++;
             // Now the deletion subsets.
             this.limits[i] = 1 << ThrSampleFormatter.this.deleteChoices.length;
+            this.deletePos = i;
             i++;
             // Next the IPTG flag.
             this.limits[i] = IPTG_CHOICES.length;
@@ -419,6 +430,20 @@ public class ThrSampleFormatter {
                 // End-of-list error.
                 throw new NoSuchElementException("Attempt to iterate past last sample ID.");
             }
+            // Compute the sample string.
+            String retVal = this.format().toString();
+            // Now increment to the next sample.
+            boolean found = findNext();
+            // If there is no next sample, insure hasNext() fails.
+            if (! found) done = true;
+            // Return the sample ID.
+            return new SampleId(retVal);
+        }
+
+        /**
+         * @return the current sample string
+         */
+        private TextStringBuilder format() {
             // Construct the current sample ID.
             TextStringBuilder retVal = new TextStringBuilder(this.positions.length * 4);
             // Single-choice fragments.
@@ -438,7 +463,8 @@ public class ThrSampleFormatter {
             i++;
             // IPTG
             retVal.append('_');
-            retVal.append(IPTG_CHOICES[this.positions[i]]);
+            String iptg = IPTG_CHOICES[this.positions[i]];
+            retVal.append(iptg);
             i++;
             // Time point
             retVal.append('_');
@@ -448,12 +474,7 @@ public class ThrSampleFormatter {
             retVal.append('_');
             retVal.append(MEDIA[this.positions[i]]);
             i++;
-            // Now increment to the next sample.
-            boolean found = findNext();
-            // If there is no next sample, insure hasNext() fails.
-            if (! found) done = true;
-            // Return the sample ID.
-            return new SampleId(retVal.toString());
+            return retVal;
         }
 
         /**
@@ -522,10 +543,12 @@ public class ThrSampleFormatter {
                     if (! this.computeFragment(1).contentEquals("D")) retVal = false;
                     if (! this.computeFragment(3).contentEquals("P")) retVal = false;
                 }
-                if (retVal)
+                if (retVal) {
                     // Verify that the deletes don't overlap the inserts.
-                    retVal = ! ThrSampleFormatter.this.insertSet.stream()
-                            .anyMatch(x -> ThrSampleFormatter.this.deleteSet.contains(x));
+                    var deletes = ThrSampleFormatter.this.calculateDeletes(this.positions[this.deletePos]);
+                    retVal = ! ThrSampleFormatter.this.calculateInserts(this.positions[this.insertPos]).stream()
+                            .anyMatch(x -> deletes.contains(x));
+                }
             }
             return retVal;
         }

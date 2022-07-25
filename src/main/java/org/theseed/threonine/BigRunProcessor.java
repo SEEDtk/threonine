@@ -8,15 +8,19 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -148,14 +152,26 @@ public class BigRunProcessor extends BaseProcessor {
         private StrainAnalyzer strainData;
         /** first-run prediction analyzer */
         private PredictionAnalyzer analyzer1;
+        /** first-run strain analyzer */
+        private StrainAnalyzer strainData1;
         /** area under the curve */
         private double auc;
         /** maximum prediction */
         private double maxPred;
         /** maximum production */
         private double maxProdAll;
-        /** number of samples for this run */
+        /** total number of predicted samples for this run */
         private int runSize;
+        /** number of new samples for this run */
+        private int newSize;
+        /** strain map for this run */
+        private Set<String> strains;
+        /** strain map for samples new to this run */
+        private Set<String> strains1;
+        /** maximum production of a constructed sample */
+        private double maxProdConstructed;
+        /** maximum production of a control sample */
+        private double maxProdControl;
 
         /**
          * Create a run descriptor.
@@ -173,8 +189,14 @@ public class BigRunProcessor extends BaseProcessor {
             this.analyzer = new PredictionAnalyzer();
             this.analyzer1 = new PredictionAnalyzer();
             this.strainData = new StrainAnalyzer();
+            this.strainData1 = new StrainAnalyzer();
+            this.strains = new HashSet<String>(500);
+            this.strains1 = new HashSet<String>(500);
             this.runSize = 0;
-            this.maxProdAll = 0;
+            this.newSize = 0;
+            this.maxProdAll = 0.0;
+            this.maxProdConstructed = 0.0;
+            this.maxProdControl = 0.0;
         }
 
         /**
@@ -237,20 +259,39 @@ public class BigRunProcessor extends BaseProcessor {
          * @param sample		ID of sample
          * @param pred			predicted value for this run
          * @param production	actual value of sample
+         * @param isNew			TRUE if the sample is new to this run
          */
-        public void addPrediction(SampleId sample, double pred, double production) {
+        public void addPrediction(SampleId sample, double pred, double production, boolean isNew) {
             this.analyzer.add(pred, production);
             this.strainData.add(sample, pred, production);
+            if (isNew) {
+                this.analyzer1.add(pred, production);
+                this.strainData1.add(sample, pred, production);
+            }
         }
 
         /**
-         * Add a prediction/production pair to this run's first-run analysis.
+         * Record a sample in this run.
          *
-         * @param pred			predicted value for this run
-         * @param production	actual value of sample
+         * @param sample		ID of sample
+         * @param isNew			TRUE if the sample is new to this run
+         * @param production 	production level of the sample
          */
-        public void addPrediction1(double pred, double production) {
-            this.analyzer1.add(pred, production);
+        public void addSample(SampleId sample, boolean isNew, double production) {
+            this.runSize++;
+            final String strainString = sample.toStrain();
+            this.strains.add(strainString);
+            if (isNew) {
+                this.newSize++;
+                this.strains1.add(strainString);
+            }
+            if (production > this.maxProdAll)
+                this.maxProdAll = production;
+            if (sample.isConstructed()) {
+                if (production > this.maxProdConstructed)
+                    this.maxProdConstructed = production;
+            } else if (production > this.maxProdControl)
+                this.maxProdControl = production;
         }
 
         /**
@@ -265,6 +306,20 @@ public class BigRunProcessor extends BaseProcessor {
          */
         public PredictionAnalyzer getStrainData() {
             return this.strainData.toAnalyzer();
+        }
+
+        /**
+         * @return the new strain predictions for this run
+         */
+        public PredictionAnalyzer getStrainData1() {
+            return this.strainData1.toAnalyzer();
+        }
+
+        /**
+         * @return the number of strains for this run
+         */
+        public int getStrainCount() {
+            return this.strains.size();
         }
 
         /**
@@ -337,17 +392,17 @@ public class BigRunProcessor extends BaseProcessor {
         }
 
         /**
-         * Increment the run size.
-         */
-        public void count() {
-            this.runSize++;
-        }
-
-        /**
          * @return the run size
          */
         public int getRunSize() {
             return this.runSize;
+        }
+
+        /**
+         * @return the number of samples new to the run
+         */
+        public int getNewSize() {
+            return this.newSize;
         }
 
         /**
@@ -375,13 +430,38 @@ public class BigRunProcessor extends BaseProcessor {
         }
 
         /**
-         * Update the maximum production for the run.
-         *
-         * @param prod		production level
+         * @return the number of new strains in this run
          */
-        public void setMaxProdAll(double prod) {
-            if (prod > this.maxProdAll)
-                this.maxProdAll = prod;
+        public int getNewStrainCount() {
+            return this.strains1.size();
+        }
+
+        /**
+         * @return the number of constructed strains in this run
+         */
+        public int getConstructedStrainCount() {
+            return (int) this.strains.stream().filter(x -> SampleId.isConstructed(x)).count();
+        }
+
+        /**
+         * @return the number of constructed strains new to this run
+         */
+        public int getNewConstructedStrainCount() {
+            return (int) this.strains1.stream().filter(x -> SampleId.isConstructed(x)).count();
+        }
+
+        /**
+         * @return the maximum production from a constructed strain
+         */
+        public double getMaxProdConstructed() {
+            return this.maxProdConstructed;
+        }
+
+        /**
+         * @return the maximum production from a control strain
+         */
+        public double getMaxProdControl() {
+            return this.maxProdControl;
         }
 
     }
@@ -413,7 +493,6 @@ public class BigRunProcessor extends BaseProcessor {
         public int compare(String o1, String o2) {
             return Double.compare(this.ratingMap.getOrDefault(o1, 0.0), this.ratingMap.getOrDefault(o2, 0.0));
         }
-
 
     }
 
@@ -508,13 +587,15 @@ public class BigRunProcessor extends BaseProcessor {
                 // Get the origin and raw-production strings.
                 String origins = line.get(originsCol);
                 String rawProductions = line.get(rawProdCol);
-                // Compute the first run.
+                // Compute the runs, remembering the first.
                 int run1 = this.runs.length;
+                BitSet runsUsed = new BitSet(this.runs.length);
                 for (String origin : StringUtils.splitByWholeSeparator(origins, ", ")) {
                     try {
                         int runI = IntStream.range(0, this.runs.length)
                                 .filter(i -> this.runs[i].isMatch(origin)).findFirst().getAsInt();
                         if (runI < run1) run1 = runI;
+                        runsUsed.set(runI);
                     } catch (NoSuchElementException e) {
                         log.info("Could not find a run for origin \"{}\".", origin);
                     }
@@ -524,9 +605,11 @@ public class BigRunProcessor extends BaseProcessor {
                     log.info("Could not find first run for sample {}: \"{}\"", sampleId, origins);
                     throw new IOException("Invalid sample " + sampleId + " has no first run.");
                 } else {
-                    firstRun = this.runs[run1].getName();
-                    this.runs[run1].count();
-                    this.runs[run1].setMaxProdAll(production);
+                    // Need to declare a final version of run1 for streaming.
+                    final int i1 = run1;
+                    firstRun = this.runs[i1].getName();
+                    IntStream.range(0, this.runs.length).filter(i -> runsUsed.get(i))
+                        .forEach(i -> this.runs[i].addSample(sample, i == i1, production));
                 }
                 // Get the output sheet for the run.
                 var runSheet = sheetMap.get(firstRun);
@@ -573,9 +656,7 @@ public class BigRunProcessor extends BaseProcessor {
                         } else {
                             mainSheet.storeCell(pred);
                             runSheet.storeCell(pred);
-                            this.runs[i].addPrediction(sample, pred, production);
-                            if (i == run1)
-                                this.runs[i].addPrediction1(pred, production);
+                            this.runs[i].addPrediction(sample, pred, production, (i == run1));
                         }
                     }
                 }
@@ -681,41 +762,82 @@ public class BigRunProcessor extends BaseProcessor {
             List<String> headers = this.computeRunHeaders();
             workbook.setHeaders(headers);
             final int n = this.cutoffs.size();
-            // Loop through the runs.
-            for (RunDescriptor run : this.runs) {
-                workbook.addRow();
-                workbook.storeCell(run.getName());
-                workbook.storeCell(run.getRunSize());
-                workbook.storeCell(run.getMaxProdAll());
-                if (! run.hasPredictions()) {
-                    // No predictions:  blank the row.
-                    IntStream.range(3, headers.size()).forEach(i -> workbook.storeBlankCell());
-                } else {
-                    // We have predictions.  Get the first-run analyzer.
-                    var analyzer1 = run.getAnalyzer1();
-                    // Add the metrics.
-                    workbook.storeCell(run.size());
-                    workbook.storeCell(analyzer1.size());
-                    workbook.storeCell(run.getMaxPred());
-                    workbook.storeCell(analyzer1.getMaxProd());
-                    workbook.storeCell(run.getAuc());
-                    workbook.storeCell(run.getPearson());
-                    // Compute the prediction success rates.
-                    for (int i = 0; i < n; i++) {
-                        var m = analyzer1.getMatrix(this.cutoffs.get(i));
-                        // We must compute the accuracy for the samples used to build the model.  This requires
-                        // subtracting the new samples from the predicted samples.
-                        var m0 = run.getMatrix(this.cutoffs.get(i));
-                        double old_accuracy = (m0.truePositiveCount() - m.truePositiveCount()
-                                + m0.trueNegativeCount() - m.trueNegativeCount())
-                                / (double) (run.size() - analyzer1.size());
-                        // Store the output values.
-                        workbook.storeCell(old_accuracy);
-                        workbook.storeCell(m.truePositiveCount() / (m.truePositiveCount() + m.falsePositiveCount()));
-                        workbook.storeCell(m.falsePositiveCount() + m.truePositiveCount());
-                        workbook.storeCell(m.truePositiveCount());
-                    }
+            // Now for each value we want to display, we show it for each run.
+            this.newPerformanceRow(workbook, "tot_size", x -> workbook.storeCell(x.getRunSize()),
+                    "Number of samples run.");
+            this.newPerformanceRow(workbook, "new_size", x -> workbook.storeCell(x.getNewSize()),
+                    "Number of samples new to this run.");
+            this.newPerformanceRow(workbook, "max_prod_all", x -> workbook.storeCell(x.getMaxProdAll()),
+                    "Maximum production output.");
+            this.newPerformanceRow(workbook, "max_prod_constructed", x -> workbook.storeCell(x.getMaxProdConstructed()),
+                    "Maximum production output for a constructed strain.");
+            this.newPerformanceRow(workbook, "max_prod_control", x -> workbook.storeCell(x.getMaxProdControl()),
+                    "Maximum production output for a control strain.");
+            this.newPerformanceRow(workbook, "tot_strains", x -> workbook.storeCell(x.getStrainCount()),
+                    "Number of strains run.");
+            this.newPerformanceRow(workbook, "new_strains", x -> workbook.storeCell(x.getNewStrainCount()),
+                    "Number of strains new to this run.");
+            this.newPerformanceRow(workbook, "tot_constructed",
+                    x -> workbook.storeCell(x.getConstructedStrainCount()),
+                    "Number of constructed strains in this run.");
+            this.newPerformanceRow(workbook, "new_constructed",
+                    x -> workbook.storeCell(x.getNewConstructedStrainCount()),
+                    "Number of constructed strains new to this run.");
+            // Now we have a bunch of things that only apply if we have predictions.
+            this.newPredictionRow(workbook, "tot_predictions", x -> workbook.storeCell(x.size()),
+                    "Number of samples with predicted values from the model used to create the run.");
+            this.newPredictionRow(workbook, "new_predictions", x -> workbook.storeCell(x.getAnalyzer1().size()),
+                    "Number of samples with predicted values new to this run.");
+            this.newPredictionRow(workbook, "max_prediction", x -> workbook.storeCell(x.getMaxPred()),
+                    "Maximum prediction from the model used to create the run.");
+            this.newPredictionRow(workbook, "AUC", x -> workbook.storeCell(x.getAuc()),
+                    "Area-under-curve for classification by production level of samples new to the run.");
+            this.newPredictionRow(workbook, "Pearson", x -> workbook.storeCell(x.getPearson()),
+                    "Pearson correlation for predicted and actual production levels in samples new to the run.");
+            this.newPredictionRow(workbook, "MAE", x -> workbook.storeCell(x.analyzer1.getMAE()),
+                    "Mean absolute error for predictions in samples new to the run.");
+            for (int i = 0; i < n; i++) {
+                double cutoff = this.cutoffs.get(i);
+                // We will use these arrays to store a confusion matrix for each run that has predictions.
+                PredictionAnalyzer.Matrix[] mats = new PredictionAnalyzer.Matrix[this.runs.length];
+                for (int runI = 0; runI < this.runs.length; runI++) {
+                    var run = this.runs[runI];
+                    if (! run.hasPredictions())
+                        mats[runI] = null;
+                    else
+                        mats[runI] = run.getAnalyzer1().getMatrix(cutoff);
                 }
+                // Now produce all the classification metrics for each run.
+                this.newCutoffRow(workbook, cutoff, mats, "predicted_%1.2f",
+                        x -> workbook.storeCell(x.predictedCount()),
+                        "Number of samples new to this run predicted positive using cutoff %1.2f");
+                this.newCutoffRow(workbook, cutoff, mats, "actual_%1.2f",
+                        x -> workbook.storeCell(x.actualCount()),
+                        "Number of samples new to this run producing more than cutoff %1.2f");
+                this.newCutoffRow(workbook, cutoff, mats, "true_positive_%1.2f",
+                        x -> workbook.storeCell(x.truePositiveCount()),
+                        "Number of true positive results in samples new to the run using cutoff %1.2f.");
+                this.newCutoffRow(workbook, cutoff, mats, "false_positive_%1.2f",
+                        x -> workbook.storeCell(x.falsePositiveCount()),
+                        "Number of false positive results in samples new to the run using cutoff %1.2f.");
+                this.newCutoffRow(workbook, cutoff, mats, "true_negative_%1.2f",
+                        x -> workbook.storeCell(x.trueNegativeCount()),
+                        "Number of true negative results in samples new to the run using cutoff %1.2f.");
+                this.newCutoffRow(workbook, cutoff, mats, "false_negative_%1.2f",
+                        x -> workbook.storeCell(x.falseNegativeCount()),
+                        "Number of false negative results in samples new to the run using cutoff %1.2f.");
+                this.newCutoffRow(workbook, cutoff, mats, "precision_%1.2f",
+                        x -> workbook.storeCell(x.precision()),
+                        "Chance of a positive prediction being a positive result using cutoff %1.2f.");
+                this.newCutoffRow(workbook, cutoff, mats, "sensitivity_%1.2f",
+                        x -> workbook.storeCell(x.sensitivity()),
+                        "Chance of a positive result being predicted positive using cutoff %1.2f.");
+                this.newCutoffRow(workbook, cutoff, mats, "accuracy_%1.2f",
+                        x -> workbook.storeCell(x.accuracy()),
+                        "Accuracy of predictions for samples new to the run using classification cutoff %1.2f.");
+                this.newCutoffRow(workbook, cutoff, mats, "fallout_%1.2f",
+                        x -> workbook.storeCell(x.fallout()),
+                        "Chance of a negative result being predicted positive using cutoff %1.2f");
             }
             workbook.autoSizeColumns();
             // Next, we have the component count sheet.  We have a column for the component titles, a column
@@ -787,6 +909,60 @@ public class BigRunProcessor extends BaseProcessor {
             }
             workbook.autoSizeColumns();
         }
+    }
+
+    /**
+     * Fill in a new row in the performance sheet.
+     *
+     * @param workbook		output workbook, positioned on the performance sheet
+     * @param title			title for this row
+     * @param action		action used to fill the row from the run descriptor
+     * @param desc 			description of the value
+     */
+    private void newPerformanceRow(CustomWorkbook workbook, String title, Consumer<RunDescriptor> action, String desc) {
+        workbook.addRow();
+        workbook.storeCell(title);
+        Arrays.stream(this.runs).forEach(action);
+        workbook.storeCell(desc);
+    }
+
+    /**
+     * Fill in a new prediction-based row in the performance sheet.
+     *
+     * @param workbook		output workbook, positioned on the performance sheet
+     * @param title			title for this row
+     * @param action		action used to fill the row from the run descriptor
+     * @param desc 			description of the value
+     */
+    private void newPredictionRow(CustomWorkbook workbook, String title, Consumer<RunDescriptor> action,
+            String desc) {
+        // What we do here is skip output for any run that doesn't have predictions.
+        this.newPerformanceRow(workbook, title,
+                x -> { if (x.hasPredictions()) action.accept(x); else workbook.storeBlankCell(); },
+                desc);
+    }
+
+    /**
+     * Produce a row of cutoff-related pseudo-classification metrics.
+     *
+     * @param workbook		output workbook, positioned on the performance sheet
+     * @param cutoff		cutoff level for pseudo-classification
+     * @param mats			array of confusion matrices for the runs
+     * @param label			label for the row, with a format substitution position for the cutoff
+     * @param action		action to take for each matrix
+     * @param desc			description of the value
+     */
+    private void newCutoffRow(CustomWorkbook workbook, double cutoff, PredictionAnalyzer.Matrix[] mats,
+            String label, Consumer<PredictionAnalyzer.Matrix> action, String desc) {
+        workbook.addRow();
+        workbook.storeCell(String.format(label, cutoff));
+        for (int i = 0; i < mats.length; i++) {
+            if (mats[i] == null)
+                workbook.storeBlankCell();
+            else
+                action.accept(mats[i]);
+        }
+        workbook.storeCell(String.format(desc, cutoff));
     }
 
     /**
@@ -867,24 +1043,11 @@ public class BigRunProcessor extends BaseProcessor {
      * @return the list of headers for the performance spreadsheet table
      */
     private List<String> computeRunHeaders() {
-        final int n = this.cutoffs.size();
-        List<String> retVal = new ArrayList<String>(7 + 3*n);
-        retVal.add("run");
-        retVal.add("size");
-        retVal.add("max_prod_all");
-        retVal.add("predictions");
-        retVal.add("predictions_run");
-        retVal.add("max_pred");
-        retVal.add("max_prod");
-        retVal.add("AUC");
-        retVal.add("Pearson");
-        for (int i = 0; i < n; i++) {
-            double cutoff = this.cutoffs.get(i);
-            retVal.add(String.format("validation_%2.1f", cutoff));
-            retVal.add(String.format("success_%2.1f", cutoff));
-            retVal.add(String.format("predicted_%2.1f", cutoff));
-            retVal.add(String.format("truePos_%2.1f", cutoff));
-        }
+        List<String> retVal = new ArrayList<String>(this.runs.length + 1);
+        retVal.add("statistic");
+        for (var run : this.runs)
+            retVal.add(run.getName());
+        retVal.add("Detailed description");
         return retVal;
     }
 
