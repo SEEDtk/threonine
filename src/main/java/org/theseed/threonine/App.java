@@ -31,6 +31,7 @@ import org.theseed.utils.BaseProcessor;
  * pairs		produce a report on pair performance from the big production table
  * strains		produce a strain report from a big_run_master file
  *
+ *
  */
 public class App
 {
@@ -116,6 +117,9 @@ public class App
             break;
         case "strains" :
             processor = new StrainProcessor();
+            break;
+        case "thrImpact" :
+            processor = new ThrImpactProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);

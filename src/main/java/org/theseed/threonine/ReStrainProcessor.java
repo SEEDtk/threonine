@@ -14,6 +14,7 @@ import java.util.TreeMap;
 
 import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Argument;
+import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.io.TabbedLineReader;
@@ -42,6 +43,8 @@ import org.theseed.utils.ParseFailureException;
  * -i	input combined master file name (if not STDIN)
  * -o	output combined master file name (if not STDOUT)
  *
+ * --fixed	name of an output file to contain the strain renaming with duplicates commented out
+ *
  * @author Bruce Parrello
  *
  */
@@ -65,12 +68,18 @@ public class ReStrainProcessor extends BasePipeProcessor {
 
     // COMMAND-LINE OPTIONS
 
+    /** fixed renaming file */
+    @Option(name = "--fixed", metaVar = "fixed_strain_data.tbl",
+            usage = "optional output file to contain non-redundant strain-renaming rules")
+    private File fixFile;
+
     /** renaming-specification file */
     @Argument(index = 0, metaVar = "new_strain_data.tbl", usage = "name of file containing strain-renaming rules")
     private File renameFile;
 
     @Override
     protected void setPipeDefaults() {
+        this.fixFile = null;
     }
 
     @Override
@@ -85,6 +94,8 @@ public class ReStrainProcessor extends BasePipeProcessor {
 
     @Override
     protected void validatePipeParms() throws IOException, ParseFailureException {
+        // If there is a fix file, we will open it in this variable.
+        PrintWriter fixStream = null;
         // Insure the rename-file exists.
         if (! this.renameFile.canRead())
             throw new FileNotFoundException("Rename-specification file " + this.renameFile + " not found or unreadable.");
@@ -93,15 +104,33 @@ public class ReStrainProcessor extends BasePipeProcessor {
         this.renamingMap = new TreeMap<SampleId, Map.Entry<String, String>>(new SampleId.ChromoSort());
         int count = 0;
         try (TabbedLineReader rStream = new TabbedLineReader(this.renameFile)) {
-            for (TabbedLineReader.Line line : rStream) {
-                SampleId key = SampleId.translate(line.get(0), 24.0, false, "M1");
-                Map.Entry<String, String> mapping = new AbstractMap.SimpleEntry<String, String>(line.get(1), line.get(2));
-                if (this.renamingMap.containsKey(key))
-                    log.warn("Duplicate key \"{}\" in specifications file.", line.get(0));
-                else
-                    this.renamingMap.put(key, mapping);
-                count++;
+            // Create the output fix-file (if any).
+            if (this.fixFile != null) {
+                fixStream = new PrintWriter(this.fixFile);
+                fixStream.println("strain\told\treplacement");
             }
+            for (TabbedLineReader.Line line : rStream) {
+                String chrome = line.get(0);
+                if (! chrome.startsWith("#")) {
+                    SampleId key = SampleId.translate(chrome, 24.0, false, "M1");
+                    var mapping = new AbstractMap.SimpleEntry<String, String>(line.get(1), line.get(2));
+                    var oldMapping = this.renamingMap.get(key);
+                    if (oldMapping != null) {
+                        if (oldMapping.getValue().equals(mapping.getValue())) {
+                            fixStream.println("#" + line.toString());
+                        } else
+                            log.error("Duplicate key \"{}\" maps to {} instead of {}.", chrome, mapping.getValue(),
+                                    oldMapping.getValue());
+                    } else {
+                        this.renamingMap.put(key, mapping);
+                        fixStream.println(line.toString());
+                    }
+                    count++;
+                }
+            }
+        } finally {
+            if (fixStream != null)
+                fixStream.close();
         }
         log.info("{} mappings found in {} input lines of {}.", this.renamingMap.size(), count, this.renameFile);
     }

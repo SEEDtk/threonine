@@ -159,6 +159,34 @@ public class PredictionAnalyzer {
         }
 
         /**
+         * @return the F1-score (TP / (TP + (FP+FN)/2))
+         */
+        public double f1score() {
+            double retVal;
+            if (confusion[1][1] == 0)
+                retVal = 0.0;
+            else
+                retVal = confusion[1][1] / (confusion[1][1] + (confusion[1][0] + confusion[0][1])/2.0);
+            return retVal;
+        }
+
+        /**
+         * @return the Matthews Correlation Coefficient
+         */
+        public double mcc() {
+            double denom = ((double) (confusion[0][0] + confusion[0][1])) * (confusion[1][0] + confusion[1][1])
+                    * (confusion[0][0] + confusion[1][0]) * (confusion[0][1] + confusion[1][1]);
+            double retVal;
+            if (denom == 0.0)
+                retVal = 0.0;
+            else {
+                double num = confusion[0][0] * confusion[1][1] - confusion[1][0] * confusion[0][1];
+                retVal = num / Math.sqrt(denom);
+            }
+            return retVal;
+        }
+
+        /**
          * @return the prediction cutoff
          */
         public double getCutoff() {
@@ -338,6 +366,28 @@ public class PredictionAnalyzer {
      */
     public double getMAE() {
         OptionalDouble retVal = this.samples.stream().mapToDouble(x -> x.getAbsError()).average();
+        return retVal.orElse(0.0);
+    }
+
+    /**
+     * @return the mean absolute error of the predictions at or above the cutoff
+     *
+     * @param cutoff		cutoff to use
+     */
+    public double getHighMAE(double cutoff) {
+        OptionalDouble retVal = this.samples.stream().filter(x -> (x.getProduction() >= cutoff))
+                .mapToDouble(x -> x.getAbsError()).average();
+        return retVal.orElse(0.0);
+    }
+
+    /**
+     * @return the mean absolute error of the predictions below the cutoff
+     *
+     * @param cutoff		cutoff to use
+     */
+    public double getLowMAE(double cutoff) {
+        OptionalDouble retVal = this.samples.stream().filter(x -> (x.getProduction() < cutoff))
+                .mapToDouble(x -> x.getAbsError()).average();
         return retVal.orElse(0.0);
     }
 

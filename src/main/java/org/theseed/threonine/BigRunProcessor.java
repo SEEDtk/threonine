@@ -24,7 +24,9 @@ import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
+import org.apache.commons.lang3.RegExUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
@@ -100,14 +102,32 @@ public class BigRunProcessor extends BaseProcessor {
     private FloatList cutoffs;
     /** component counts */
     private Map<Double, CountMap<String>> countMapMap;
+    /** number of experiments */
+    private int experimentCount;
+    /** number of outliers */
+    private int outlierCount;
+    /** number of good samples */
+    private int goodSamples;
+    /** number of bad samples */
+    private int badSamples;
+    /** recording of absolute error per non-outlier experiment */
+    private DescriptiveStatistics errors;
+    /** number of samples for each try count */
+    private CountMap<Integer> tryCounts;
     /** cutoff counts */
     private CountMap<Double> countMapTotals;
     /** production formatter for xmatrix sheet */
     private ThrSampleFormatter formatter;
     /** component-pairing map-- maps each component to a hash of components to statistical summaries of pairings */
     private Map<String, Map<String, DescriptiveStatistics>> pairMap;
+    /** constructed strains in good samples */
+    private Set<String> constructedStrainSet;
     /** pearson correlation engine */
     private final PearsonsCorrelation computer = new PearsonsCorrelation();
+    /** search pattern for insert portion of a strain name */
+    private final Pattern INSERT_PART = Pattern.compile("_[^_]+_D");
+    /** replace string for removing the insert portion of a strain name */
+    private final String NULL_INSERT = "_000_D";
 
     // COMMAND-LINE OPTIONS
 
@@ -165,13 +185,19 @@ public class BigRunProcessor extends BaseProcessor {
         /** number of new samples for this run */
         private int newSize;
         /** strain map for this run */
-        private Set<String> strains;
+        private Map<String, Double> strains;
         /** strain map for samples new to this run */
-        private Set<String> strains1;
+        private Map<String, Double> strains1;
         /** maximum production of a constructed sample */
         private double maxProdConstructed;
         /** maximum production of a control sample */
         private double maxProdControl;
+        /** total lines in prediction file */
+        private int totalPredictions;
+        /** prediction file results above lowest cutoff */
+        private int highPredictions;
+        /** cutoff counts */
+        private CountMap<Double> cutoffCounts;
 
         /**
          * Create a run descriptor.
@@ -190,13 +216,16 @@ public class BigRunProcessor extends BaseProcessor {
             this.analyzer1 = new PredictionAnalyzer();
             this.strainData = new StrainAnalyzer();
             this.strainData1 = new StrainAnalyzer();
-            this.strains = new HashSet<String>(500);
-            this.strains1 = new HashSet<String>(500);
+            this.strains = new HashMap<String, Double>(500);
+            this.strains1 = new HashMap<String, Double>(500);
             this.runSize = 0;
             this.newSize = 0;
             this.maxProdAll = 0.0;
             this.maxProdConstructed = 0.0;
             this.maxProdControl = 0.0;
+            this.totalPredictions = 0;
+            this.highPredictions = 0;
+            this.cutoffCounts = new CountMap<Double>();
         }
 
         /**
@@ -218,6 +247,8 @@ public class BigRunProcessor extends BaseProcessor {
                 log.info("Loading predictions from {}.", this.predFile);
                 int lineCount = 0;
                 int predCount = 0;
+                int highCount = 0;
+                double cutoff = BigRunProcessor.this.cutoffs.get(0);
                 try (var predStream = new TabbedLineReader(this.predFile)) {
                     for (TabbedLineReader.Line line : predStream) {
                         SampleId sample = new SampleId(line.get(0));
@@ -227,9 +258,13 @@ public class BigRunProcessor extends BaseProcessor {
                             preds[i] = pred;
                             predCount++;
                         }
+                        if (pred >= cutoff) highCount++;
                         lineCount++;
                     }
-                    log.info("{} predictions retrieved from {} lines.", predCount, lineCount);
+                    log.info("{} predictions retrieved from {} lines.  {} higher than {}.",
+                            predCount, lineCount, highCount, cutoff);
+                    this.totalPredictions = lineCount;
+                    this.highPredictions = highCount;
                 }
             }
         }
@@ -271,6 +306,23 @@ public class BigRunProcessor extends BaseProcessor {
         }
 
         /**
+         * Merge a sample production into a strain mapping.
+         *
+         * @param map		strain mapping to update
+         * @param strain	strain ID string
+         * @param prod		production level
+         */
+        private void mergeSample(Map<String, Double> strainMap, String strain, double prod) {
+            if (! strainMap.containsKey(strain))
+                strainMap.put(strain, prod);
+            else {
+                double oldValue = strainMap.get(strain);
+                if (prod > oldValue)
+                    strainMap.put(strain, prod);
+            }
+        }
+
+        /**
          * Record a sample in this run.
          *
          * @param sample		ID of sample
@@ -280,16 +332,22 @@ public class BigRunProcessor extends BaseProcessor {
         public void addSample(SampleId sample, boolean isNew, double production) {
             this.runSize++;
             final String strainString = sample.toStrain();
-            this.strains.add(strainString);
+            this.mergeSample(this.strains, strainString, production);
             if (isNew) {
                 this.newSize++;
-                this.strains1.add(strainString);
+                this.mergeSample(this.strains1, strainString, production);
             }
             if (production > this.maxProdAll)
                 this.maxProdAll = production;
             if (sample.isConstructed()) {
+                // Record the maximum constructed-strain production.
                 if (production > this.maxProdConstructed)
                     this.maxProdConstructed = production;
+                // Record the cutoff counts.
+                for (var cutoff : BigRunProcessor.this.cutoffs) {
+                    if (production > cutoff)
+                        this.cutoffCounts.count(cutoff);
+                }
             } else if (production > this.maxProdControl)
                 this.maxProdControl = production;
         }
@@ -440,14 +498,64 @@ public class BigRunProcessor extends BaseProcessor {
          * @return the number of constructed strains in this run
          */
         public int getConstructedStrainCount() {
-            return (int) this.strains.stream().filter(x -> SampleId.isConstructed(x)).count();
+            return (int) getConstructed(this.strains.keySet()).count();
         }
 
         /**
          * @return the number of constructed strains new to this run
          */
         public int getNewConstructedStrainCount() {
-            return (int) this.strains1.stream().filter(x -> SampleId.isConstructed(x)).count();
+            return (int) getConstructed(this.strains1.keySet()).count();
+        }
+
+        /**
+         * @return the number of constructed chromosomes in this run
+         */
+        public int getConstructedChromosomeCount() {
+            return getConstructed(this.strains.keySet()).map(x -> toChromosome(x)).collect(Collectors.toSet()).size();
+        }
+
+        /**
+         * @return the number of chromosomes in this run
+         */
+        public int getChromosomeCount() {
+            return this.strains.keySet().stream().map(x -> toChromosome(x)).collect(Collectors.toSet()).size();
+        }
+
+        /**
+         * @return the chromosome portion of a strain
+         */
+        protected String toChromosome(String strain) {
+            return RegExUtils.replaceFirst(strain, INSERT_PART, NULL_INSERT);
+        }
+
+        /**
+         * @return a stream of the constructed strains in a strain set
+         *
+         * @param strains	set of strains to use
+         */
+        protected Stream<String> getConstructed(Set<String> strains) {
+            return strains.stream().filter(x -> SampleId.isConstructed(x));
+        }
+
+        /**
+         * @return the number of constructed strains in this run with production over the cutoff
+         *
+         * @param cutoff	cutoff of interest
+         */
+        public int getConstructedStrainHighCount(double cutoff) {
+            return (int) this.strains.entrySet().stream()
+                    .filter(x -> SampleId.isConstructed(x.getKey()) && x.getValue() >= cutoff).count();
+        }
+
+        /**
+         * @return the number of constructed strains new to this run with production over the cutoff
+         *
+         * @param cutoff	cutoff of interest
+         */
+        public int getNewConstructedStrainHighCount(double cutoff) {
+            return (int) this.strains1.entrySet().stream()
+                    .filter(x -> SampleId.isConstructed(x.getKey()) && x.getValue() >= cutoff).count();
         }
 
         /**
@@ -462,6 +570,29 @@ public class BigRunProcessor extends BaseProcessor {
          */
         public double getMaxProdControl() {
             return this.maxProdControl;
+        }
+
+        /**
+         * @return the total number of predictions used to build the run
+         */
+        public int getPredFileSize() {
+            return this.totalPredictions;
+        }
+
+        /**
+         * @return the total number of predictions used to build the run that were above a cutoff
+         */
+        public int getHighFileSize() {
+            return this.highPredictions;
+        }
+
+        /**
+         * @return the number of samples with production higher than the cutoff
+         *
+         * @param cutoff	cutoff level (must be one of the predefined cutoffs)
+         */
+        public int getCutoffCount(double cutoff) {
+            return this.cutoffCounts.getCount(cutoff);
         }
 
     }
@@ -534,6 +665,15 @@ public class BigRunProcessor extends BaseProcessor {
         this.countMapTotals = new CountMap<Double>();
         // Set up the pairing map.
         this.pairMap = new TreeMap<String, Map<String, DescriptiveStatistics>>();
+        // Set up the counting sets.
+        this.constructedStrainSet = new HashSet<String>(1000);
+        // Set up the experiment counters.
+        this.errors = new DescriptiveStatistics();
+        this.experimentCount = 0;
+        this.tryCounts = new CountMap<Integer>();
+        this.outlierCount = 0;
+        this.goodSamples = 0;
+        this.badSamples = 0;
         // Set up the files.
         log.info("Processing control file.");
         this.processControlFile();
@@ -572,21 +712,33 @@ public class BigRunProcessor extends BaseProcessor {
                 String sampleId = line.get(sampleCol);
                 SampleId sample = new SampleId(sampleId);
                 var parts = sample.getComponents();
-                // Update the threshold counts.
-                double production = line.getDouble(prodCol);
-                for (Map.Entry<Double, CountMap<String>> countMap : this.countMapMap.entrySet()) {
-                    final Double cutoffKey = countMap.getKey();
-                    if (cutoffKey <= production) {
-                        var actualMap = countMap.getValue();
-                        parts.stream().forEach(x -> actualMap.count(x));
-                        this.countMapTotals.count(cutoffKey);
-                    }
-                }
-                // Update the diversity counts.
-                parts.stream().forEach(x -> this.updateDiversity(parts, x, production));
-                // Get the origin and raw-production strings.
+                // Get the origin and production data.
                 String origins = line.get(originsCol);
                 String rawProductions = line.get(rawProdCol);
+                double production = line.getDouble(prodCol);
+                // We are about to update some counts.  Only do this for good samples.
+                String badFlag = line.get(badCol);
+                boolean badSample = badFlag.contentEquals("Y");
+                if (badSample)
+                    this.badSamples++;
+                else {
+                    this.goodSamples++;
+                    // Update the threshold counts.
+                    for (Map.Entry<Double, CountMap<String>> countMap : this.countMapMap.entrySet()) {
+                        final Double cutoffKey = countMap.getKey();
+                        if (cutoffKey <= production) {
+                            var actualMap = countMap.getValue();
+                            parts.stream().forEach(x -> actualMap.count(x));
+                            this.countMapTotals.count(cutoffKey);
+                        }
+                    }
+                    // Update the diversity counts.
+                    parts.stream().forEach(x -> this.updateDiversity(parts, x, production));
+                    // Remember the strain.
+                    String strain = sample.toStrain();
+                    if (SampleId.isConstructed(strain))
+                        this.constructedStrainSet.add(strain);
+                }
                 // Compute the runs, remembering the first.
                 int run1 = this.runs.length;
                 BitSet runsUsed = new BitSet(this.runs.length);
@@ -605,21 +757,37 @@ public class BigRunProcessor extends BaseProcessor {
                     log.info("Could not find first run for sample {}: \"{}\"", sampleId, origins);
                     throw new IOException("Invalid sample " + sampleId + " has no first run.");
                 } else {
-                    // Need to declare a final version of run1 for streaming.
-                    final int i1 = run1;
-                    firstRun = this.runs[i1].getName();
-                    IntStream.range(0, this.runs.length).filter(i -> runsUsed.get(i))
-                        .forEach(i -> this.runs[i].addSample(sample, i == i1, production));
+                    firstRun = this.runs[run1].getName();
+                    // Add this sample to its runs if it is a good sample.
+                    if (! badSample) {
+                        // We need to declare a final version of run1 for streaming.
+                        final int i1 = run1;
+                        IntStream.range(0, this.runs.length).filter(i -> runsUsed.get(i))
+                            .forEach(i -> this.runs[i].addSample(sample, i == i1, production));
+                    }
                 }
-                // Get the output sheet for the run.
+                // Get the output sheet for the first run.
                 var runSheet = sheetMap.get(firstRun);
                 // Compute the max production from the raw productions, skipping the questionable ones.
+                // Here we also count trials and outliers (failures).
                 double maxProduction = 0.0;
+                int tries = 0;
+                int fails = 0;
                 for (String prodString : StringUtils.split(rawProductions, ",")) {
-                    if (! prodString.startsWith("(")) {
+                    if (prodString.startsWith("("))
+                        fails++;
+                    else {
                         double prod = Double.valueOf(prodString);
                         if (prod > maxProduction) maxProduction = prod;
+                        tries++;
+                        this.errors.addValue(Math.abs(prod - production));
                     }
+                }
+                // If this is a good sample, update the experiment counts.
+                if (! badSample) {
+                    this.experimentCount += tries + fails;
+                    this.outlierCount += fails;
+                    this.tryCounts.count(tries);
                 }
                 // Get the predictions.
                 double[] preds = this.predMap.get(sample);
@@ -638,9 +806,11 @@ public class BigRunProcessor extends BaseProcessor {
                 runSheet.storeCell(sampleId);
                 mainSheet.storeCell(firstRun);
                 runSheet.storeCell(firstRun);
-                String badFlag = line.get(badCol);
                 mainSheet.storeCell(badFlag);
                 runSheet.storeCell(badFlag);
+                String constructed = (sample.isConstructed() ? "Y" : "");
+                mainSheet.storeCell(constructed);
+                runSheet.storeCell(constructed);
                 mainSheet.storeCell(production);
                 runSheet.storeCell(production);
                 mainSheet.storeCell(maxProduction);
@@ -783,7 +953,17 @@ public class BigRunProcessor extends BaseProcessor {
             this.newPerformanceRow(workbook, "new_constructed",
                     x -> workbook.storeCell(x.getNewConstructedStrainCount()),
                     "Number of constructed strains new to this run.");
+            this.newPerformanceRow(workbook, "cons_chromosome",
+                    x -> workbook.storeCell(x.getConstructedChromosomeCount()),
+                    "Number of distinct constructed chromosomes in this run.");
+            this.newPerformanceRow(workbook, "tot_chromosome",
+                    x -> workbook.storeCell(x.getChromosomeCount()),
+                    "Number of distinct chromosomes in this run.");
             // Now we have a bunch of things that only apply if we have predictions.
+            this.newPredictionRow(workbook, "predictions_computed", x -> workbook.storeCell(x.getPredFileSize()),
+                    "Total number of predictions computed in virtual space to build run.");
+            this.newPredictionRow(workbook, "high_predictions_computed", x -> workbook.storeCell(x.getHighFileSize()),
+                    String.format("Total number of predictions in virtual space >= %1.2f.", this.cutoffs.get(0)));
             this.newPredictionRow(workbook, "tot_predictions", x -> workbook.storeCell(x.size()),
                     "Number of samples with predicted values from the model used to create the run.");
             this.newPredictionRow(workbook, "new_predictions", x -> workbook.storeCell(x.getAnalyzer1().size()),
@@ -798,6 +978,23 @@ public class BigRunProcessor extends BaseProcessor {
                     "Mean absolute error for predictions in samples new to the run.");
             for (int i = 0; i < n; i++) {
                 double cutoff = this.cutoffs.get(i);
+                // Start with MAE numbers.
+                this.newPredictionRow(workbook, String.format("MAE >= %1.2f", cutoff),
+                        x -> workbook.storeCell(x.analyzer.getHighMAE(cutoff)),
+                        String.format("Mean Absolute Error for samples with production >= %1.2f.", cutoff));
+                this.newPredictionRow(workbook, String.format("MAE < %1.2f", cutoff),
+                        x -> workbook.storeCell(x.analyzer.getLowMAE(cutoff)),
+                        String.format("Mean Absolute Error for samples with production < %1.2f.", cutoff));
+                // Next we have some constructed-strain metrics.
+                this.newPerformanceRow(workbook, String.format("high_constructed_%1.2f", cutoff),
+                        x -> workbook.storeCell(x.getConstructedStrainHighCount(cutoff)),
+                        String.format("Number of constructed strains in this run with production >= %1.2f.", cutoff));
+                this.newPerformanceRow(workbook, String.format("new_high_constructed_%1.2f", cutoff),
+                        x -> workbook.storeCell(x.getNewConstructedStrainHighCount(cutoff)),
+                        String.format("Number of constructed strains new to this run with production >= %1.2f.", cutoff));
+                this.newPerformanceRow(workbook, String.format("high_samples_%1.2f", cutoff),
+                        x -> workbook.storeCell(x.getCutoffCount(cutoff)),
+                        String.format("Number of constructed samples with production >= %1.2f.", cutoff));
                 // We will use these arrays to store a confusion matrix for each run that has predictions.
                 PredictionAnalyzer.Matrix[] mats = new PredictionAnalyzer.Matrix[this.runs.length];
                 for (int runI = 0; runI < this.runs.length; runI++) {
@@ -838,6 +1035,12 @@ public class BigRunProcessor extends BaseProcessor {
                 this.newCutoffRow(workbook, cutoff, mats, "fallout_%1.2f",
                         x -> workbook.storeCell(x.fallout()),
                         "Chance of a negative result being predicted positive using cutoff %1.2f");
+                this.newCutoffRow(workbook, cutoff, mats, "F1score_%1.2f",
+                        x -> workbook.storeCell(x.f1score()),
+                        "Combined precision / recall rating");
+                this.newCutoffRow(workbook, cutoff, mats, "MCC_%1.2f",
+                        x -> workbook.storeCell(x.mcc()),
+                        "Classification rating:  1 = perfect, 0 = random, -1 = always wrong");
             }
             workbook.autoSizeColumns();
             // Next, we have the component count sheet.  We have a column for the component titles, a column
@@ -875,14 +1078,6 @@ public class BigRunProcessor extends BaseProcessor {
                         workbook.storeCell((int) pairStats.getN());
                 }
             }
-            // Finally, the total row.
-            workbook.addRow();
-            workbook.storeCell("TOTAL");
-            for (Double cutoff : this.countMapMap.keySet()) {
-                workbook.storeCell(this.countMapTotals.count(cutoff));
-                if (cutoff > 0.0)
-                    workbook.storeBlankCell();
-            }
             workbook.autoSizeColumns();
             // This next sheet contains a summary value for each component combination.  The result can be
             // used for a heat map or surface plot.  Currently, the summary value is the maximum.
@@ -908,7 +1103,48 @@ public class BigRunProcessor extends BaseProcessor {
                 }
             }
             workbook.autoSizeColumns();
+            // The final sheet contains global statistics.
+            log.info("Creating global statistics page.");
+            workbook.addSheet("Good Samples", true);
+            workbook.setHeaders(Arrays.asList("Statistic", "Value"));
+            workbook.addRow();
+            workbook.storeCell("Number of good samples");
+            workbook.storeCell(this.goodSamples);
+            workbook.addRow();
+            workbook.storeCell("Number of bad samples");
+            workbook.storeCell(this.badSamples);
+            workbook.addRow();
+            workbook.storeCell("Total number of experiments");
+            workbook.storeCell(this.experimentCount);
+            workbook.addRow();
+            workbook.storeCell("Total number of outliers");
+            workbook.storeCell(this.outlierCount);
+            workbook.addRow();
+            workbook.storeCell("Mean absolute error in experiments");
+            workbook.storeCell(this.errors.getMean());
+            workbook.addRow();
+            workbook.storeCell("Standard deviation of absolute error in experiments");
+            workbook.storeCell(this.errors.getStandardDeviation());
+            workbook.addRow();
+            workbook.storeCell("Number of constructed strains");
+            workbook.storeCell(this.constructedStrainSet.size());
+            // Go through the try counts in numerical order.
+            final var tries = this.tryCounts.keys();
+            for (var tryCount : tries) {
+                workbook.addRow();
+                workbook.storeCell(String.format("Samples with %2d good tries", tryCount));
+                workbook.storeCell(this.tryCounts.getCount(tryCount));
+            }
+            // Go through the cutoff counts in numerical order.
+            for (var cutoff : this.cutoffs) {
+                workbook.addRow();
+                workbook.storeCell(String.format("Samples with production >= %1.2f", cutoff));
+                workbook.storeCell(this.countMapTotals.getCount(cutoff));
+            }
+            workbook.autoSizeColumns();
+
         }
+
     }
 
     /**
@@ -1081,6 +1317,7 @@ public class BigRunProcessor extends BaseProcessor {
         retVal.add("sample");
         retVal.add("first_run");
         retVal.add("bad");
+        retVal.add("constructed");
         retVal.add("thr_production");
         retVal.add("max_production");
         retVal.addAll(predHeads);
