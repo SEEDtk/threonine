@@ -118,9 +118,6 @@ public class App
         case "strains" :
             processor = new StrainProcessor();
             break;
-        case "thrImpact" :
-            processor = new ThrImpactProcessor();
-            break;
         default:
             throw new RuntimeException("Invalid command " + command);
         }
