@@ -31,6 +31,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.excel.ExcelUtils;
 import org.theseed.io.LineReader;
 
 /**
@@ -56,7 +57,7 @@ import org.theseed.io.LineReader;
  * The bad wells file is a flat file named "badWells.txt".  If it exists, each line consists of a plate name, a tab
  * and a comma-delimited list of wells on that plate that should be marked suspicious.
  *
- * Each small plate has its own growth data file.  The growth data file is comma-delimited and quoted.
+ * For most group types, each small plate has its own growth data file.  The growth data file is comma-delimited and quoted.
  * The second line will contain the plate identification in the first field.  As a weird special case, a
  * plate ID of "NO PLASMID" is changed to "NONE".  Further on, the real data will appear after a header line
  * ("Well","Sample","OD(600)").  This section contains the well ID in the first column and the growth in the third.
@@ -182,8 +183,7 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
         this.layoutFiles = new ArrayList<File>(10);
         for (File inFile : this.inDir.listFiles()) {
             String name = inFile.getName();
-            // A suffix of ".csv" indicates a growth file.
-            if (StringUtils.endsWith(name, ".csv"))
+            if (this.isGrowthFile(name))
                 this.growthFiles.add(inFile);
             else if (this.isLayoutFile(name))
                 this.layoutFiles.add(inFile);
@@ -207,6 +207,18 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
         if (this.timeSeries.isEmpty())
             this.timeSeries.add(this.timePoint);
         log.info("{} time points will be used for this run.", this.timeSeries.size());
+    }
+
+    /**
+     * Determine whether or not a file name is the name of a growth file.  The default case assumes a CSV file
+     * contains growth data, but some experiment groups can override this.
+     *
+     * @param name		name of the file
+     *
+     * @return TRUE if the file name indicates a growth file, else FALSE
+     */
+    protected boolean isGrowthFile(String name) {
+        return StringUtils.endsWith(name, ".csv");
     }
 
     /**
@@ -238,7 +250,8 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
     }
 
     /**
-     * Read the growth data for a plate from a growth file.
+     * Read the growth data for a plate from a normal growth file.  (This method is overridden when the
+     * growth file format is different.)
      *
      * @param growthFile	input growth file to read
      * @param time			the time point of this growth
@@ -263,7 +276,7 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
                 plate = marker;
             if (plate == null)
                 throw new IOException("Could not find plate ID in file " + growthFile + ".");
-            ExperimentData results = this.experimentMap.get(plate);
+            ExperimentData results = this.getPlateResults(plate);
             if (results == null)
                 throw new IOException("Could not find experiment plate " + plate + ".");
             // Look for the dilution factor.
@@ -274,7 +287,7 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
                 if (m.matches())
                     factor = Double.valueOf(m.group(1));
                 if (marker.contentEquals("results by well")) {
-                    // No dilution line.  Stop here and set the factor to 1.0.
+                    // No dilution line.  Stop here and set the factor to 10.
                     factor = 10.0;
                 }
             }
@@ -298,6 +311,15 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
             }
             log.info("{} values stored, {} values skipped for plate {}.", storeCount, skipCount, plate);
         }
+    }
+
+    /**
+     * @return the experiment result data for a specified plate
+     *
+     * @param plate		ID of the plate
+     */
+    protected ExperimentData getPlateResults(String plate) {
+        return this.experimentMap.get(plate);
     }
 
     /**
@@ -346,11 +368,15 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
      * two tables of interest-- one that describes the content of each cell (plate and
      *
      * @param prodFile	file name of the spreadsheet
-     * @param time		time point for this file
+     * @param time		time point for this file, or 0 if it has multiple time points
      *
      * @throws IOException
      */
     protected void readProductionFile(File prodFile, double time) throws IOException {
+        // Set the default time, if needed.
+        if (time != 0.0)
+            this.setTimePoint(time);
+        // Get the production spreadsheet.
         try (InputStream fileStream = new FileInputStream(prodFile);
                 Workbook workbook = new XSSFWorkbook(fileStream)) {
             Sheet sheet = workbook.getSheetAt(0);
@@ -386,12 +412,12 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
                             String well = sample.getWell();
                             if (plate.toLowerCase().contentEquals("nopl"))
                                 plate = "NONE";
-                            ExperimentData experiment = this.experimentMap.get(plate);
+                            ExperimentData experiment = getPlateResults(plate);
                             if (experiment == null)
                                 log.warn("Invalid plate ID \"{}\" in sample map.", plate);
                             else {
                                 // Get the well's result object.
-                                ExperimentData.Result result = experiment.getResult(well, time);
+                                ExperimentData.Result result = experiment.getResult(well, sample.time);
                                 results[c] = result;
                                 if (result != null) {
                                     // Check for a bad well.
@@ -524,7 +550,7 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
      * @param iptgFlag	TRUE if IPTG is in effect, else FALSE
      */
     public void store(String plate, String strain, String well, boolean iptgFlag) {
-        ExperimentData results = this.experimentMap.get(plate);
+        ExperimentData results = getPlateResults(plate);
         for (Double time : this.timeSeries) {
             boolean iptgMode = (iptgFlag && time >= 5.0);
             results.store(strain, well, time, iptgMode);
@@ -540,7 +566,7 @@ public abstract class ExperimentGroup extends ExcelUtils implements Iterable<Exp
      */
     public ExperimentData.Result getResult(String plate, String well, double time) {
         ExperimentData.Result retVal = null;
-        ExperimentData experiment = this.experimentMap.get(plate);
+        ExperimentData experiment = getPlateResults(plate);
         if (experiment != null)
             retVal = experiment.getResult(well, time);
         return retVal;

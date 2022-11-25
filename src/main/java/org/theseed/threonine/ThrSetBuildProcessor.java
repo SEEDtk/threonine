@@ -15,15 +15,17 @@ import org.theseed.experiments.ExperimentData;
 import org.theseed.experiments.ExperimentGroup;
 import org.theseed.experiments.MultiExperimentGroup;
 import org.theseed.experiments.SetExperimentGroup;
+import org.theseed.experiments.SingleExperimentGroup;
 import org.theseed.utils.BaseProcessor;
 import org.theseed.utils.ParseFailureException;
 
 /**
  * This script processes a threonine experiment directory.  Each subdirectory has as its name an experiment
- * group ID and contains all the files describing the experiment. There are two types of subdirectories, the
- * MULTI type that contains multiple layout files in Word documents, and the SET type that contains a single
- * layout file in an Excel spreadsheet.  The type of directory is indicated by a marker file in the directory
- * with the name "SET" or "MULTI".
+ * group ID and contains all the files describing the experiment. There are three types of subdirectories: the
+ * MULTI type that contains multiple layout files in Word documents, the SET type that contains a single
+ * layout file in an Excel spreadsheet, and the SINGLE type contains a simplified SET-type structure for
+ * a single plate.  The type of directory is indicated by a marker file in the directory
+ * with the name "SET", "SINGLE", or "MULTI".
  *
  * An output file suitable for processing by ThrFixProcessor is produced
  *
@@ -90,11 +92,14 @@ public class ThrSetBuildProcessor extends BaseProcessor {
                 // Determine the directory type.
                 File multiMarker = new File(subDir, "MULTI");
                 File setMarker = new File(subDir, "SET");
+                File singleMarker = new File(subDir, "SINGLE");
                 ExperimentGroup group = null;
                 if (multiMarker.exists())
                     group = new MultiExperimentGroup(subDir, subDir.getName());
                 else if (setMarker.exists())
                     group = new SetExperimentGroup(subDir, subDir.getName());
+                else if (singleMarker.exists())
+                    group = new SingleExperimentGroup(subDir, subDir.getName());
                 if (group == null)
                     log.info("Subdirectory {} does not appear to contain an experiment group:  no type marker found.", subDir);
                 else {
