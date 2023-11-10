@@ -14,9 +14,9 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.math3.stat.descriptive.SummaryStatistics;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.rna.RnaData;
 import org.theseed.samples.SampleId;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This command produces comparison reports on all the multi-sample sets of RNA expression data in a single RNA Seq database.

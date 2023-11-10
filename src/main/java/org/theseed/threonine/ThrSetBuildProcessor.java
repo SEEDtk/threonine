@@ -11,13 +11,13 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseProcessor;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.experiments.ExperimentData;
 import org.theseed.experiments.ExperimentGroup;
 import org.theseed.experiments.MultiExperimentGroup;
 import org.theseed.experiments.SetExperimentGroup;
 import org.theseed.experiments.SingleExperimentGroup;
-import org.theseed.utils.BaseProcessor;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This script processes a threonine experiment directory.  Each subdirectory has as its name an experiment

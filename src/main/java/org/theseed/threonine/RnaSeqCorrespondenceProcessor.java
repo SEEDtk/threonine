@@ -13,9 +13,9 @@ import org.apache.commons.math3.stat.correlation.PearsonsCorrelation;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.apache.commons.math3.util.ResizableDoubleArray;
 import org.kohsuke.args4j.Option;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.rna.RnaData;
 import org.theseed.rna.RnaJobInfo;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This command reports on the correspondence between each feature's expression levels and the threonine output.  The

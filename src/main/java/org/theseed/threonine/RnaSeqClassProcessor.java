@@ -20,14 +20,14 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseProcessor;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.io.MarkerFile;
 import org.theseed.rna.AdvancedExpressionConverter;
 import org.theseed.rna.RnaData;
 import org.theseed.rna.RnaJobInfo;
 import org.theseed.rna.RnaSeqFeatureFilter;
 import org.theseed.rna.RnaFeatureData;
-import org.theseed.utils.BaseProcessor;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This command creates a classifier training file from the RNA seq data.  First, all the samples with threonine production data

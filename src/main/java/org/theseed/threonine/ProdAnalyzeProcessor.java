@@ -10,10 +10,10 @@ import java.util.regex.Pattern;
 import org.kohsuke.args4j.Argument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.PredictionAnalyzer;
 import org.theseed.utils.BasePipeProcessor;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This method produces a report on the success of the predictors for a particular run.  The input must be

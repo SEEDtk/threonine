@@ -21,11 +21,11 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.io.LineReader;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.samples.SampleId;
 import org.theseed.utils.BaseReportProcessor;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This method reads a predictions file containing both predicted and expected threonine data and a

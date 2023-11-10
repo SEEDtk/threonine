@@ -14,11 +14,11 @@ import org.apache.commons.math3.stat.descriptive.SummaryStatistics;
 import org.kohsuke.args4j.Argument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseProcessor;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.rna.RnaData;
 import org.theseed.rna.RnaData.Weight;
 import org.theseed.rna.RnaFeatureData;
-import org.theseed.utils.BaseProcessor;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This command searches through multiple RNA seq databases to find genes with a relatively constant expression

@@ -20,12 +20,12 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseProcessor;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.io.LineReader;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.ThrSampleFormatter;
 import org.theseed.samples.SampleId;
-import org.theseed.utils.BaseProcessor;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This program reads the choices.tbl file produced by the "thrfix" command and produces

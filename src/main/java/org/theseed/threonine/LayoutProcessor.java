@@ -13,12 +13,12 @@ import java.util.TreeMap;
 import org.kohsuke.args4j.Argument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.experiments.ExperimentData;
 import org.theseed.experiments.ExperimentGroup;
 import org.theseed.experiments.MultiExperimentGroup;
 import org.theseed.reports.NaturalSort;
 import org.theseed.utils.BaseReportProcessor;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This command takes as input a layout file and produces a simple report listing all the wells along

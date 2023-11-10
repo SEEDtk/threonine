@@ -8,7 +8,7 @@ import java.io.PrintWriter;
 import java.util.List;
 
 import org.kohsuke.args4j.Argument;
-import org.theseed.utils.ParseFailureException;
+import org.theseed.basic.ParseFailureException;
 
 /**
  * This command reads an RNA expression database and compares the expression levels of two or more samples, displaying the mean

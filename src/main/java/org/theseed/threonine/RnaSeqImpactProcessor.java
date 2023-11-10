@@ -20,14 +20,14 @@ import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Argument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseProcessor;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.genome.Feature;
 import org.theseed.genome.Genome;
 import org.theseed.genome.SubsystemRow;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.magic.MagicMap;
 import org.theseed.subsystems.SubsystemRowDescriptor;
-import org.theseed.utils.BaseProcessor;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This command creates an impact report.  The report combines data from several other reports to produce a picture

@@ -2,7 +2,7 @@ package org.theseed.threonine;
 
 import java.util.Arrays;
 
-import org.theseed.utils.BaseProcessor;
+import org.theseed.basic.BaseProcessor;
 
 /**
  * Commands for Threonine Project Utilities
