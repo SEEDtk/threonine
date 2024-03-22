@@ -9,10 +9,10 @@ import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.math3.stat.descriptive.SummaryStatistics;
 import org.kohsuke.args4j.Option;
-import org.theseed.counters.Rating;
-import org.theseed.counters.RatingList;
 import org.theseed.rna.RnaData;
 import org.theseed.rna.RnaData.Row;
+import org.theseed.stats.Rating;
+import org.theseed.stats.RatingList;
 import org.theseed.rna.RnaFeatureData;
 
 /**

@@ -13,8 +13,8 @@ import java.util.stream.IntStream;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.TextStringBuilder;
-import org.theseed.counters.Shuffler;
 import org.theseed.samples.SampleId;
+import org.theseed.stats.Shuffler;
 import org.theseed.threonine.Production;
 
 /**
