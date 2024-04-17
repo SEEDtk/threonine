@@ -24,13 +24,13 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseReportProcessor;
 import org.theseed.basic.ParseFailureException;
 import org.theseed.excel.ExcelUtils;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.samples.SampleId;
 import org.theseed.samples.SugarUsage;
 import org.theseed.samples.WellDescriptor;
-import org.theseed.utils.BaseReportProcessor;
 
 /**
  * This class produces a report on glucose utilization from an existing master file and a set of
